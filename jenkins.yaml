@@ -1,0 +1,65 @@
+credentials:
+  system:
+    domainCredentials:
+    - credentials:
+      - string:
+          description: "This is Slack credential"
+          id: "slack"
+          scope: GLOBAL
+          secret: "{AQAAABAAAAAQOuDAPBR38sYxXO0VM0cykKhFuSVOtjnAjY+u8RpB0GU=}"
+
+jenkins:
+  systemMessage: "Jenkins configured automatically by Jenkins Configuration as a code plugin\n\n"
+  agentProtocols:
+  - "JNLP4-connect"
+  - "Ping"
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: true
+
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Jenkins administrators"
+            permissions:
+              - "Overall/Administer"
+            assignments:
+              - "admin"
+          - name: "readonly"
+            description: "Read-only users"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+            assignments:
+              - "authenticated"
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "#jbcrypt:$2a$10$3bnAsorIxhl9kTYvNHa2hOJQwPzwT4bv9Vs.9KdXkh9ySANjJKm5u"
+        - id: "lbadmus"
+          # password is password
+          password: "#jbcrypt:$2a$10$3bnAsorIxhl9kTYvNHa2hOJQwPzwT4bv9Vs.9KdXkh9ySANjJKm5u"
+          
+unclassified:
+  slackNotifier:
+    teamDomain: team_name_without_domain
+    tokenCredentialId: slack-token
+  sonarglobalconfiguration:                  # mandatory
+    buildWrapperEnabled: true
+    installations:                           # mandatory
+      - name: "TEST"                         # id of the SonarQube configuration - to be used in jobs
+        serverUrl: "http://url:9000"
+        #credentialsId: token-sonarqube       # id of the credentials containing sonar auth token (since 2.9 version)
+        serverAuthenticationToken: "token"   # for retrocompatibility with versions < 2.9
+        mojoVersion: "mojoVersion"
+        additionalProperties: "blah=blah"
+        additionalAnalysisProperties: "additionalAnalysisProperties"
+        triggers:
+          skipScmCause: true
+          skipUpstreamCause: true
+          envVar: "envVar"
