@@ -1,0 +1,3 @@
+tgw_attachment_id=$(aws ec2 describe-transit-gateway-vpc-attachments --filter Name=vpc-id,Values=["$1"] --query "TransitGatewayVpcAttachments[*].TransitGatewayAttachmentId" --output text)
+tgw_rt_id=$(aws ec2 describe-transit-gateway-route-tables --filter Name=default-association-route-table,Values=["true"] Name=transit-gateway-id,Values=["$2"] --query 'TransitGatewayRouteTables[*].TransitGatewayRouteTableId' --output text)
+aws ec2 create-transit-gateway-route --destination-cidr-block 0.0.0.0/0 --transit-gateway-route-table-id  $tgw_rt_id --transit-gateway-attachment-id $tgw_attachment_id||true
