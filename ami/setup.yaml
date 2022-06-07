@@ -1,0 +1,78 @@
+---
+- name: Configuring Ubuntu AMI
+  hosts: localhost
+  connection: local
+  become: true
+  user: ubuntu
+  vars:
+    kubectl_version: "1.23.2"
+    kubectl_os: "linux" 
+    kubectl_arch: "amd64"
+    kubectl_tmp_directory: "{{ lookup('env', 'TMPDIR') | default('/tmp',true) }}"
+    kubectl_bin_directory: "/usr/local/bin"
+    kubectl_checksum_binary: "sha512:578e8ab8f10240073cc39130c28b384805f1b4c758c22574c709a5f4e1a8ea79cd3772e662f47e838eaf3ef234b55f073098984568218652cae0c42b7d616025"
+    executable_temp_dir: "/tmp"
+    ansible_architecture: "x86_64"
+  tasks:
+  # Tasks to update the system and install dependencies and caching for 1 hour
+  - name: update system to latest state
+    package: update_cache=true cache_valid_time=3600
+    
+  # Install base software development tools required for application to run smoothly  
+  - name: Install dependencies
+    apt:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - git
+      - build-essential
+      - software-properties-common
+      - curl 
+      - wget
+      - unzip
+      - docker.io
+  - name: install amazon-ssm-agent with snap
+    snap:
+      name: "amazon-ssm-agent"
+      classic: "yes"
+      state: "present"
+      channel: "candidate"
+  - name: ensure amazon-ssm-agent is started and enabled on boot
+    systemd:
+      name: "snap.amazon-ssm-agent.amazon-ssm-agent.service"
+      enabled: yes
+      state: started
+  - name: Download kubectl binary
+    get_url:
+      url: "https://storage.googleapis.com/kubernetes-release/release/v{{ kubectl_version }}/bin/{{ kubectl_os }}/{{ kubectl_arch }}/kubectl"
+      checksum: "{{ kubectl_checksum_binary }}"
+      dest: "{{ kubectl_tmp_directory }}"
+  - name: Copy kubectl binary to destination directory
+    copy:
+      src: "{{ kubectl_tmp_directory }}/{{ item }}"
+      dest: "{{ kubectl_bin_directory }}/{{ item }}"
+      mode: "0755"
+      owner: "root"
+      group: "root"
+      remote_src: true
+    with_items:
+      - kubectl
+  - name: Download awscliv2 installer.
+    unarchive:
+      src: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+      dest: "{{ executable_temp_dir }}"
+      remote_src: true
+      creates: '{{ executable_temp_dir }}/aws'
+      mode: 0755
+  - name: Run the installer.
+    command:
+    args:
+      cmd: "{{ executable_temp_dir }}/aws/install"
+      creates: /usr/local/bin/aws
+    become: true
+    register: aws_install
+  - name: "Show installer output."
+    debug:
+      var: aws_install
+      verbosity: 2
+...
