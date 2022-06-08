@@ -18,7 +18,7 @@ pipeline {
         stage('Vul Scanning') {
 
             steps {
-                sh "cd app && trivy fs ."
+                sh "cd app && trivy fs . && docker build -t node . && trivy image node"
                 }
         }
         
