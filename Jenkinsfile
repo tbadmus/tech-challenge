@@ -61,8 +61,6 @@ pipeline {
                 sh '''
                      terraform init --reconfigure
                      REPO_URL=$(terraform output ecr_repo_url|sed -e 's/"//g')
-                     curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/linux/amd64/kubectl && \
-                     chmod +x ./kubectl && ./kubectl version
                      cd app && aws eks update-kubeconfig --name mvp-cluster
                      docker build -t node .
                      docker tag node $REPO_URL
@@ -70,8 +68,8 @@ pipeline {
                      aws ecr get-login-password |docker login --username AWS --password-stdin $REPO
                      docker push $REPO_URL
                      sed -i -e "s%REPO_URL%${REPO_URL}%g" deployment.yaml
-                     $PWD/kubectl apply -f deployment.yaml
-                     $PWD/kubectl apply -f service.yaml
+                     kubectl apply -f deployment.yaml
+                     kubectl apply -f service.yaml
                 '''
                 }
         }
