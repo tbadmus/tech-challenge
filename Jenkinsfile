@@ -12,7 +12,7 @@ pipeline {
         stage('Test') {
 
             steps {
-                sh "echo test step"
+                sh "echo test step && aws --version && kubectl version"
                 }
         }
         
