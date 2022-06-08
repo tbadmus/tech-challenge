@@ -18,7 +18,11 @@ pipeline {
         stage('Vul Scanning') {
 
             steps {
-                sh "cd app && trivy fs . && docker build -t node . && trivy image node"
+                sh '''
+                    trivy fs -security-checks vuln,config app/
+                    docker build -t node -f app/Dockerfile .
+                    trivy image node
+                '''
                 }
         }
         
