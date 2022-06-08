@@ -1,6 +1,5 @@
 provider "aws" {
   region  = "us-west-2"
-  profile = "larry.badmus"
   default_tags {
     tags = {
       Environment = "MVP"
