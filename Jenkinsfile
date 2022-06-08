@@ -3,7 +3,7 @@
 environment_branches = ['dev', 'master']
 
 pipeline {
-    agent {any}
+    agent any
 
     stages {
         stage('Test') {
