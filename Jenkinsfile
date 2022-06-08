@@ -63,8 +63,8 @@ pipeline {
             steps {
                 sh '''
                     terraform init --reconfigure
-                    cd app && aws eks update-kubeconfig --name mvp-cluster
                     terraform output ecr_repo_url
+                    cd app && aws eks update-kubeconfig --name mvp-cluster
 //                     docker build -t node .
 //                     docker tag node $REPO_URL
 //                     REPO=$(echo $REPO_URL|awk -F/ '{print $1}')
