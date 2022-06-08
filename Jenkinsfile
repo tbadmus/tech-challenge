@@ -22,6 +22,14 @@ pipeline {
 //                 '''
 //                 }
 //         }
+        stage('Create keypair') {
+
+            steps {
+                withCredentials([file(credentialsId: 'techkey', variable: 'techkey-pub'){
+                    sh "aws ec2 import-key-pair --region us-west-2 --key-name "mvp" --public-key-material fileb://\$techkey-pub"
+                }
+                }
+        }
         
         stage('Deploy to Environment') {
             when {
