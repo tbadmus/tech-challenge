@@ -41,10 +41,9 @@ pipeline {
                 withCredentials([string(credentialsId: 'pubkey', variable: 'SECRET')]) { //set SECRET with the credential content
                     echo "My secret text is '${SECRET}'"
                 }
-                withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
+                withCredentials([string(credentialsId: 'pubkey', variable: 'SECRET')]) {
                     sh '''
-                        echo $techkeypub>/tmp/keypairpub
-                        cat /tmp/keypairpub
+                        echo ${SECRET}>/tmp/keypairpub
                         aws ec2 import-key-pair --key-name mvp --public-key-material fileb:///tmp/keypairpub
                     '''
                 }
