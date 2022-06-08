@@ -1,5 +1,6 @@
 /* ENVIRONMENT BRANCHES used to Deploy*/
 environment_branches = ['dev', 'master']
+
 pipeline {
     agent any
 
@@ -25,10 +26,11 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
                     sh '''
-                        sh "aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://\$techkey-pub"
+                        echo $techkeypub>keypairpub
+                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material file://keypairpub
                     '''
                 }
-            }
+                }
         }
         
         stage('Deploy to Environment') {
