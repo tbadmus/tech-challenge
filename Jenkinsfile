@@ -62,17 +62,17 @@ pipeline {
         stage('Deploy application in K8S') {
             steps {
                 sh '''
-                    terraform init --reconfigure
-                    terraform output ecr_repo_url
-                    cd app && aws eks update-kubeconfig --name mvp-cluster
-//                     docker build -t node .
-//                     docker tag node $REPO_URL
-//                     REPO=$(echo $REPO_URL|awk -F/ '{print $1}')
-//                     aws ecr get-login-password |docker login --username AWS --password-stdin $REPO
-//                     docker push $REPO_URL
-//                     sed -i -e "s%REPO_URL%${REPO_URL}%g" deployment.yaml
-//                     kubectl apply -f deployment.yaml
-//                     kubectl apply -f service.yaml
+                     terraform init --reconfigure
+                     REPO_URL=$(terraform output ecr_repo_url)
+                     cd app && aws eks update-kubeconfig --name mvp-cluster
+                     docker build -t node .
+                     docker tag node $REPO_URL
+                     REPO=$(echo $REPO_URL|awk -F/ '{print $1}')
+                     aws ecr get-login-password |docker login --username AWS --password-stdin $REPO
+                     docker push $REPO_URL
+                     sed -i -e "s%REPO_URL%${REPO_URL}%g" deployment.yaml
+                     kubectl apply -f deployment.yaml
+                     kubectl apply -f service.yaml
                 '''
                 }
         }
