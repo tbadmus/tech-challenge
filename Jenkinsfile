@@ -15,16 +15,16 @@ pipeline {
                 sh "echo test step"
                 }
         }
-        stage('Vul Scanning') {
+//         stage('Vulnurabilities and security scanning') {
 
-            steps {
-                sh '''
-                    trivy fs -security-checks vuln,config app/
-                    docker build -t node -f app/Dockerfile app
-                    trivy image node
-                '''
-                }
-        }
+//             steps {
+//                 sh '''
+//                     trivy fs -security-checks vuln,config app/
+//                     docker build -t node -f app/Dockerfile app
+//                     trivy image node
+//                 '''
+//                 }
+//         }
         
 //         stage('Build image') {
 
@@ -35,18 +35,18 @@ pipeline {
 //                 '''
 //                 }
 //         }
-//         stage('Create keypair') {
+        stage('Create keypair') {
 
-//             steps {
-//                 withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
-//                     sh '''
-//                         echo $techkeypub>keypairpub
-//                         cat $PWD/keypairpub
-//                         aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://$PWD/keypairpub
-//                     '''
-//                 }
-//                 }
-//         }
+            steps {
+                withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
+                    sh '''
+                        echo $techkeypub>/tmp/keypairpub
+                        cat /tmp/keypairpub
+                        aws ec2 import-key-pair --key-name mvp --public-key-material fileb:///tmp/keypairpub
+                    '''
+                }
+                }
+        }
         
         // stage('Deploy infrastructure') {
         //     when {
