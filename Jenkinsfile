@@ -34,13 +34,10 @@ pipeline {
             steps {
                 script {
                     // SET params for dev
-                    withAWS(role: "saic-tech-ECSRole-us-west-2", roleAccount: "020793260732", roleSessionName: "Jenkins") {
                         sh '''
                             terraform init --reconfigure
                             terraform plan
                         '''
-                        
-                    }
                 }
             }
         }
