@@ -21,18 +21,18 @@ pipeline {
 //                 '''
 //                 }
 //         }
-        stage('Create keypair') {
+//         stage('Create keypair') {
 
-            steps {
-                withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
-                    sh '''
-                        echo $techkeypub>keypairpub
-                        cat $PWD/keypairpub
-                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://$PWD/keypairpub
-                    '''
-                }
-                }
-        }
+//             steps {
+//                 withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
+//                     sh '''
+//                         echo $techkeypub>keypairpub
+//                         cat $PWD/keypairpub
+//                         aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://$PWD/keypairpub
+//                     '''
+//                 }
+//                 }
+//         }
         
         stage('Deploy to Environment') {
             when {
@@ -46,8 +46,11 @@ pipeline {
                 script {
                     // SET params for dev
                         sh '''
-                            terraform init --reconfigure
-                            terraform plan
+                            echo "Formatting Terraform changes...."
+                            terraform init --reconfigure 
+                            terraform fmt --recursive
+                            echo "Provisioning infrastructure using Terraform......"
+                            terraform apply -auto-approve
                         '''
                 }
             }
