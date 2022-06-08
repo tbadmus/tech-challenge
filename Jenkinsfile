@@ -12,7 +12,7 @@ pipeline {
         stage('Test') {
 
             steps {
-                sh "echo test step && aws --version && kubectl version"
+                sh "echo test step"
                 }
         }
         
@@ -65,7 +65,7 @@ pipeline {
                      terraform init --reconfigure
                      REPO_URL=$(terraform output ecr_repo_url|sed -e 's/"//g')
                      curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/linux/amd64/kubectl && \
-                     chmod +x ./kubectl
+                     chmod +x ./kubectl && ./kubectl version
                      cd app && aws eks update-kubeconfig --name mvp-cluster
                      docker build -t node .
                      docker tag node $REPO_URL
