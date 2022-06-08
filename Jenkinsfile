@@ -38,6 +38,9 @@ pipeline {
         stage('Create keypair') {
 
             steps {
+                withCredentials([string(credentialsId: 'pubkey', variable: 'SECRET')]) { //set SECRET with the credential content
+                    echo "My secret text is '${SECRET}'"
+                }
                 withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
                     sh '''
                         echo $techkeypub>/tmp/keypairpub
