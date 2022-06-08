@@ -27,7 +27,7 @@ pipeline {
                 withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
                     sh '''
                         echo $techkeypub>keypairpub
-                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material file://keypairpub
+                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material file://$PWD/keypairpub
                     '''
                 }
                 }
