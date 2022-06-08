@@ -12,7 +12,7 @@ pipeline {
         stage('Sonarqube') {
             steps {
                 script{
-                    def scannerHome = tool 'SonarRunner_3.3.0';
+                    def scannerHome = tool 'Sonar';
                 }
                 withSonarQubeEnv('SonarQube') {
                     sh "${scannerHome}/bin/sonar-scanner"
