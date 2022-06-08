@@ -24,8 +24,15 @@ pipeline {
         stage('Create keypair') {
 
             steps {
-                withCredentials(file(credentialsId: 'techkey', variable: 'techkey-pub')){
-                    sh "aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://\$techkey-pub"
+                // withCredentials(file(credentialsId: 'techkey', variable: 'techkey-pub')){
+                //     sh "aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://\$techkey-pub"
+                // }
+                withCredentials([file(credentialsId: 'techkey', variable: 'techkeypub')]) {
+                    // some block can be a groovy block as well and the variable will be available to the groovy script
+                    sh '''
+                        echo "This is the directory of the secret file $techkeypub"
+                        echo "This is the content of the file `cat $techkeypub`"
+                    '''
                 }
                 }
         }
