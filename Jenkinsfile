@@ -3,7 +3,11 @@ environment_branches = ['dev', 'master']
 
 pipeline {
     agent any
-
+    
+    environment {
+        AWS_DEFAULT_REGION = "us-west-2"
+    }
+    
     stages {
         stage('Test') {
 
