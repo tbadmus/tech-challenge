@@ -63,7 +63,7 @@ pipeline {
             steps {
                 sh '''
                      terraform init --reconfigure
-                     REPO_URL=$(terraform output ecr_repo_url|sed -e s/"//g)
+                     REPO_URL=$(terraform output ecr_repo_url|sed -e s/\"//g)
                      cd app && aws eks update-kubeconfig --name mvp-cluster
                      docker build -t node .
                      docker tag node $REPO_URL
