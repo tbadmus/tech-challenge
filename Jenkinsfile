@@ -62,8 +62,8 @@ pipeline {
         stage('Deploy application in K8S') {
             steps {
                 sh '''
-                    cd app && aws eks update-kubeconfig --name mvp-cluster
                     terraform init --reconfigure
+                    cd app && aws eks update-kubeconfig --name mvp-cluster
                     export REPO_URL=$(terraform output ecr_repo_url)
                     docker build -t node .
                     docker tag node $REPO_URL
