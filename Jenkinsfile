@@ -51,10 +51,7 @@ pipeline {
                     // SET params for dev
                         sh '''
                             echo "Formatting Terraform changes...."
-//                             terraform init --reconfigure 
-//                             terraform fmt --recursive
-//                             echo "Provisioning infrastructure using Terraform......"
-//                             terraform apply -auto-approve
+
                         '''
                 }
             }
