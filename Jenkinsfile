@@ -28,7 +28,7 @@ pipeline {
                     sh '''
                         echo $techkeypub>keypairpub
                         cat $PWD/keypairpub
-                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material file://$PWD/keypairpub
+                        aws ec2 import-key-pair --region us-west-2 --key-name mvp --public-key-material fileb://$PWD/keypairpub
                     '''
                 }
                 }
