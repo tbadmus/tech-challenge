@@ -70,8 +70,8 @@ pipeline {
                      aws ecr get-login-password |docker login --username AWS --password-stdin $REPO
                      docker push $REPO_URL
                      sed -i -e "s%REPO_URL%${REPO_URL}%g" deployment.yaml
-                     ./kubectl apply -f deployment.yaml
-                     ./kubectl apply -f service.yaml
+                     $PWD/kubectl apply -f deployment.yaml
+                     $PWD/kubectl apply -f service.yaml
                 '''
                 }
         }
