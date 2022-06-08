@@ -38,13 +38,10 @@ pipeline {
         stage('Create keypair') {
 
             steps {
-                withCredentials([string(credentialsId: 'pubkey', variable: 'SECRET')]) { //set SECRET with the credential content
-                    echo "My secret text is '${SECRET}'"
-                }
                 withCredentials([string(credentialsId: 'pubkey', variable: 'SECRET')]) {
                     sh '''
                         echo ${SECRET}>/tmp/keypairpub
-                        aws ec2 import-key-pair --key-name mvp --public-key-material fileb:///tmp/keypairpub
+                        aws ec2 import-key-pair --key-name mvp --public-key-material fileb:///tmp/keypairpub || true
                     '''
                 }
                 }
