@@ -9,19 +9,19 @@ pipeline {
     }
     
     stages {
-        stage('Sonarqube') {
-            steps {
-                script{
-                    def scannerHome = tool 'Sonar';
-                }
-                withSonarQubeEnv('SonarQube') {
-                    sh "${scannerHome}/bin/sonar-scanner"
-                }
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+//         stage('Sonarqube') {
+//             steps {
+//                 script{
+//                     def scannerHome = tool 'Sonar';
+//                 }
+//                 withSonarQubeEnv('SonarQube') {
+//                     sh "${scannerHome}/bin/sonar-scanner"
+//                 }
+//                 timeout(time: 10, unit: 'MINUTES') {
+//                     waitForQualityGate abortPipeline: true
+//                 }
+//             }
+//         }
         stage('Vulnurabilities and security scanning') {
 
             steps {
