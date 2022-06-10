@@ -1,5 +1,6 @@
 /* ENVIRONMENT BRANCHES used to Deploy*/
 environment_branches = ['dev', 'master']
+
 pipeline {
     agent any
     
