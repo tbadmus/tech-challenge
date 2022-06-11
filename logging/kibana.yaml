@@ -1,1 +1,53 @@
-
+kind: Service
+apiVersion: v1
+metadata:
+  name: kibana
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"          
+  labels:
+    app: "kibana"
+spec:
+  type: LoadBalancer
+  selector:
+    app: "kibana"
+  ports:
+  - name: http
+    protocol: TCP
+    port: 5601
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  labels:
+    app: "kibana"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: "kibana"
+  template:
+    metadata:
+      name: "kibana"
+      labels:
+        app: "kibana"
+    spec:
+      containers:
+      - name: kibana
+        image: "docker.elastic.co/kibana/kibana:7.15.2"
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1500Mi
+          requests:
+            cpu: 100m
+            memory: 1500Mi
+        env:
+          - name: ELASTICSEARCH_URL
+            value: http://elasticsearch:9200
+          - name: ELASTICSEARCH_USERNAME
+            value: elastic
+          - name: ELASTICSEARCH_PASSWORD
+            value: ELASTIC-PASSWORD
+        ports:
+        - containerPort: 5601
