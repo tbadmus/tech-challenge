@@ -54,6 +54,7 @@ pipeline {
                 }
         }
         
+        
 //         stage('Deploy infrastructure') {
 //             when {
 //                 expression {
@@ -73,6 +74,20 @@ pipeline {
 //                 }
 //             }
 //         }
+           stage('Deploy logging') {
+
+            steps {
+                withCredentials([string(credentialsId: 'elasticpassword', variable: 'ELASTIC')]) {
+                    sh '''
+                        sed -i -e "s%ELASTIC-PASSWORD%${ELASTIC}%g" logging/elastic.yaml
+                        sed -i -e "s%ELASTIC-PASSWORD%${ELASTIC}%g" logging/fluentd.yaml
+                        sed -i -e "s%ELASTIC-PASSWORD%${ELASTIC}%g" logging/kibana.yaml
+                        aws eks update-kubeconfig --name mvp-cluster 
+                        kubectl apply -f logging
+                    '''
+                }
+                }
+           }
 //         stage('Deploy application in K8S') {
 //             steps {
 //                 sh '''
