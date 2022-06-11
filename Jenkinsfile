@@ -31,17 +31,16 @@ pipeline {
                     trivy image node
                 '''
                 }
-        }
-        
-//         stage('Build image') {
+        }        
+        stage('Build image') {
 
-//             steps {
-//                 sh '''
-//                     packer validate ami/ami.json
-//                     packer build ami/ami.json
-//                 '''
-//                 }
-//         }
+            steps {
+                sh '''
+                    packer validate ami/ami.json
+                    packer build ami/ami.json
+                '''
+                }
+        }
         stage('Create keypair') {
 
             steps {
