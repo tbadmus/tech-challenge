@@ -9,7 +9,7 @@ pipeline {
     }
     
     stages {
-        stage('Sonarqube') {
+        stage('Code testing') {
             steps {
                 script{
                     scannerHome = tool 'Sonar';
@@ -52,9 +52,7 @@ pipeline {
                     '''
                 }
                 }
-        }
-        
-        
+        }       
         stage('Deploy infrastructure') {
             when {
                 expression {
@@ -74,7 +72,7 @@ pipeline {
                 }
             }
         }
-           stage('Deploy logging') {
+        stage('Deploy logging') {
 
             steps {
                 withCredentials([string(credentialsId: 'elasticpassword', variable: 'ELASTIC')]) {
@@ -91,9 +89,8 @@ pipeline {
         stage('Deploy application in K8S') {
             steps {
                 sh '''
-                     terraform init --reconfigure
                      REPO_URL=$(terraform output ecr_repo_url|sed -e 's/"//g')
-                     cd app && aws eks update-kubeconfig --name mvp-cluster
+                     cd app
                      docker build -t node .
                      docker tag node $REPO_URL
                      REPO=$(echo $REPO_URL|awk -F/ '{print $1}')
