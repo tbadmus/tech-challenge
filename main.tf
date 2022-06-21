@@ -128,19 +128,19 @@ module "bastion" {
   }]
 }
 
-# resource "null_resource" "copy-files" {
-#   depends_on = [
-#     module.bastion
-#   ]
+resource "null_resource" "copy-files" {
+  depends_on = [
+    module.bastion
+  ]
 
-#   connection {
-#     type        = "ssh"
-#     user        = local.username
-#     host        = module.bastion.public_ip
-#     private_key = file("${path.module}/techkey")
-#   }
+  connection {
+    type        = "ssh"
+    user        = local.username
+    host        = module.bastion.public_ip
+    private_key = file("${path.module}/techkey")
+  }
 
-#   ## Copy files to VM :
+  ## Copy files to VM :
 #   provisioner "file" {
 #     source      = "${path.module}/app/deployment.yaml"
 #     destination = "/home/${local.username}/deployment.yaml"
@@ -166,19 +166,19 @@ module "bastion" {
 #     destination = "/home/${local.username}/deploy.sh"
 #   }
 
-#   provisioner "file" {
-#     source      = "${path.module}/techkey"
-#     destination = "/home/${local.username}/techkey.pem"
-#   }
+  provisioner "file" {
+    source      = "${path.module}/techkey"
+    destination = "/home/${local.username}/techkey.pem"
+  }
 
-#   provisioner "remote-exec" {
-#     inline = [
-#       "chmod +x /home/${local.username}/deploy.sh",
-#       "chmod 400 /home/${local.username}/techkey.pem",
-#       "echo export REPO_URL=${module.ecr.url}>>/home/${local.username}/.bashrc"
-#     ]
-#   }
-# }
+  provisioner "remote-exec" {
+    inline = [
+      # "chmod +x /home/${local.username}/deploy.sh",
+      "chmod 400 /home/${local.username}/techkey.pem"
+      # "echo export REPO_URL=${module.ecr.url}>>/home/${local.username}/.bashrc"
+    ]
+  }
+}
 
 module "int-bastion" {
   source               = "./modules/ec2"
