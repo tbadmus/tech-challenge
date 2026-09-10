@@ -216,3 +216,13 @@ variable "ssm_host_instance_type" {
   type        = string
   default     = "t3.micro"
 }
+
+# ---------------------------------------------------------------------------
+# Cluster software
+# ---------------------------------------------------------------------------
+
+variable "lb_controller_chart_version" {
+  description = "aws-load-balancer-controller Helm chart version. Pinned so a cluster rebuild does not silently pick up a new controller."
+  type        = string
+  default     = "3.5.0"
+}

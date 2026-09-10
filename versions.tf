@@ -14,5 +14,18 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+
+    # Cluster-level software: the load balancer controller and the default
+    # StorageClass. Both providers authenticate against the cluster this same
+    # root module creates -- see the note in providers.tf.
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
+    }
+
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.35"
+    }
   }
 }

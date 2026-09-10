@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: tech-challenge
+
+# Set by CI rather than edited by hand:
+#   kustomize edit set image hello-world=<repo>@<digest>
+# This is the replacement for `sed -i` on a tracked file. Kustomize rewrites
+# the reference on the way out, leaving the manifest in git unmodified.
+images:
+  - name: hello-world
+    newName: 841845498000.dkr.ecr.us-east-1.amazonaws.com/hello-world
+    # By digest, not tag. A digest is the only reference that cannot be moved
+    # underneath a running Deployment, and it guarantees the pod spec changes on
+    # every build -- which is what the old :latest + IfNotPresent combination
+    # failed to do, so new code never rolled out.
+    digest: sha256:7e83b624c53f3ba5602f0b4a8f2ee663f1db7089c2e55465578806829545281f

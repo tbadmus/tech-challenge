@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    # Enforce the restricted Pod Security Standard. The workload is built to
+    # satisfy it: non-root, no privilege escalation, all capabilities dropped,
+    # read-only root filesystem, RuntimeDefault seccomp.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
