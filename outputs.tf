@@ -42,3 +42,56 @@ output "ecr_repository_url" {
   description = "ECR repository URL for the demo application image."
   value       = module.ecr.url
 }
+
+# ---------------------------------------------------------------------------
+# Cluster
+# ---------------------------------------------------------------------------
+
+output "cluster_endpoint" {
+  description = "EKS API server endpoint."
+  value       = module.eks.cluster_endpoint
+}
+
+output "cluster_version" {
+  description = "Kubernetes version actually running."
+  value       = module.eks.cluster_version
+}
+
+output "cluster_endpoint_public_access" {
+  description = "Whether the API endpoint is reachable from outside the VPC. The pre-modernization stack left this at the AWS default of true with 0.0.0.0/0."
+  value       = var.cluster_endpoint_public_access
+}
+
+output "cluster_security_group_id" {
+  description = "Security group the control plane uses to talk to nodes."
+  value       = module.eks.cluster_security_group_id
+}
+
+output "oidc_provider_arn" {
+  description = "OIDC provider ARN, for IRSA where Pod Identity is not an option."
+  value       = module.eks.oidc_provider_arn
+}
+
+output "node_group_role_arn" {
+  description = "IAM role the managed node group runs as."
+  value       = try(module.eks.eks_managed_node_groups["default"].iam_role_arn, null)
+}
+
+output "ssm_host_instance_id" {
+  description = "Instance ID to target with `aws ssm start-session`. Empty when create_ssm_host is false."
+  value       = try(aws_instance.ssm[0].id, "")
+}
+
+output "kubeconfig_command" {
+  description = "Command to point kubectl at this cluster."
+  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.region}"
+}
+
+output "tunnel_command" {
+  description = "SSM port-forward to the API endpoint, for when the public endpoint is disabled or your IP is not allowlisted."
+  value = var.create_ssm_host ? join(" ", [
+    "aws ssm start-session --target ${try(aws_instance.ssm[0].id, "")}",
+    "--document-name AWS-StartPortForwardingSessionToRemoteHost",
+    "--parameters '{\"host\":[\"${replace(module.eks.cluster_endpoint, "https://", "")}\"],\"portNumber\":[\"443\"],\"localPortNumber\":[\"8443\"]}'",
+  ]) : ""
+}

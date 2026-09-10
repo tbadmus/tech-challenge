@@ -8,7 +8,7 @@ vpc_cidr           = "10.1.0.0/16"
 az_count           = 3
 single_nat_gateway = false # one NAT per AZ: no shared failure domain, no cross-AZ egress charges
 
-cluster_version                = "1.34"
+cluster_version                = "1.35"
 cluster_endpoint_public_access = false # private endpoint only; reach it over SSM or an in-VPC runner
 
 # Mandatory, not optional, when the endpoint is private: without these, image

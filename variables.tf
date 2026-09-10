@@ -74,7 +74,7 @@ variable "single_nat_gateway" {
 variable "cluster_version" {
   description = "Kubernetes minor version. Check the EKS version calendar before bumping."
   type        = string
-  default     = "1.34"
+  default     = "1.35"
 }
 
 variable "cluster_endpoint_public_access" {
@@ -91,6 +91,18 @@ variable "cluster_endpoint_public_access_cidrs" {
   validation {
     condition     = !contains(var.cluster_endpoint_public_access_cidrs, "0.0.0.0/0")
     error_message = "0.0.0.0/0 is not an acceptable value. Use an allowlist, or set cluster_endpoint_public_access = false and reach the API over SSM."
+  }
+
+  # An empty list while public access is enabled is the dangerous case: the
+  # community module's own default for this input is ["0.0.0.0/0"], so passing
+  # nothing would silently restore the exposure ADR-0004 exists to remove.
+  # Fail loudly instead.
+  validation {
+    condition = (
+      !var.cluster_endpoint_public_access ||
+      length(var.cluster_endpoint_public_access_cidrs) > 0
+    )
+    error_message = "cluster_endpoint_public_access is true but no CIDRs are allowlisted. Either add your egress IP (curl -s https://checkip.amazonaws.com) or set cluster_endpoint_public_access = false and use the SSM tunnel."
   }
 }
 
@@ -181,4 +193,26 @@ variable "flow_log_retention_days" {
   description = "CloudWatch retention for VPC flow logs."
   type        = number
   default     = 14
+}
+
+# ---------------------------------------------------------------------------
+# Control plane logging and SSM access host
+# ---------------------------------------------------------------------------
+
+variable "control_plane_log_retention_days" {
+  description = "CloudWatch retention for EKS control plane logs. The old stack enabled all five log types with no retention, so they accrued forever."
+  type        = number
+  default     = 30
+}
+
+variable "create_ssm_host" {
+  description = "Create a private, keyless instance for SSM port-forwarding to the cluster API. The ADR-0004 replacement for the public SSH bastion."
+  type        = bool
+  default     = true
+}
+
+variable "ssm_host_instance_type" {
+  description = "Instance type for the SSM access host. It only terminates a port-forward."
+  type        = string
+  default     = "t3.micro"
 }

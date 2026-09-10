@@ -13,7 +13,7 @@ TFVARS := environments/$(ENV).tfvars
 BACKEND := environments/$(ENV).s3.tfbackend
 
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig
+.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig tunnel
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "};{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +46,9 @@ check: ## Non-mutating checks, the same set CI runs
 kubeconfig: ## Point kubectl at the $(ENV) cluster
 	aws eks update-kubeconfig --name $$($(TF) output -raw cluster_name) \
 		--region $$($(TF) output -raw region)
+
+tunnel: ## SSM port-forward to the cluster API on localhost:8443 (no SSH, no open ports)
+	@eval "$$($(TF) output -raw tunnel_command)"
 
 clean: ## Remove local plans and provider caches
 	rm -f *.tfplan
