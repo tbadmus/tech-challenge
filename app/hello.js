@@ -34,6 +34,16 @@ app.get('/', (req, res) => {
 </div>`);
 });
 
+// Inline SVG favicon. Without it a browser logs a 404 on every page load,
+// which is noise in exactly the console output you want clean during a demo.
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/svg+xml').send(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">' +
+    '<rect width="16" height="16" rx="3" fill="#10151a"/>' +
+    '<circle cx="8" cy="8" r="4" fill="none" stroke="#45b3aa" stroke-width="1.6"/>' +
+    '</svg>');
+});
+
 // Separate from readiness on purpose: liveness answering means the process is
 // alive, readiness answering means it should receive traffic. Pointing both at
 // the same handler is how you get a deadlocked pod that is never restarted.

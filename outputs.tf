@@ -95,3 +95,13 @@ output "tunnel_command" {
     "--parameters '{\"host\":[\"${replace(module.eks.cluster_endpoint, "https://", "")}\"],\"portNumber\":[\"443\"],\"localPortNumber\":[\"8443\"]}'",
   ]) : ""
 }
+
+output "app_fqdn" {
+  description = "Public hostname of the demo app. Empty until enable_dns is set with a resolvable domain."
+  value       = local.app_fqdn
+}
+
+output "app_certificate_arn" {
+  description = "ACM certificate ARN for the app hostname."
+  value       = try(aws_acm_certificate_validation.app[0].certificate_arn, "")
+}

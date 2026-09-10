@@ -226,3 +226,37 @@ variable "lb_controller_chart_version" {
   type        = string
   default     = "3.5.0"
 }
+
+# ---------------------------------------------------------------------------
+# Public DNS and TLS
+# ---------------------------------------------------------------------------
+
+variable "enable_dns" {
+  description = "Issue an ACM certificate and run ExternalDNS. Requires a PUBLICLY RESOLVABLE domain -- ACM validates over public DNS, so an undelegated zone makes the apply hang until it times out."
+  type        = bool
+  default     = false
+}
+
+variable "domain_name" {
+  description = "Apex domain of the Route53 hosted zone, e.g. example.com."
+  type        = string
+  default     = ""
+}
+
+variable "hosted_zone_id" {
+  description = "Route53 hosted zone ID for domain_name."
+  type        = string
+  default     = ""
+}
+
+variable "app_subdomain" {
+  description = "Subdomain the demo app is served on, prepended to domain_name."
+  type        = string
+  default     = "hello"
+}
+
+variable "external_dns_chart_version" {
+  description = "ExternalDNS Helm chart version."
+  type        = string
+  default     = "1.19.0"
+}

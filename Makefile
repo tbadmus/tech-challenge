@@ -13,7 +13,7 @@ TFVARS := environments/$(ENV).tfvars
 BACKEND := environments/$(ENV).s3.tfbackend
 
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig tunnel image deploy url
+.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig tunnel image deploy deploy-tls url
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "};{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -65,6 +65,16 @@ image: ## Build and push the app image to ECR, tagged with the commit SHA
 deploy: ## Apply the app manifests to the cluster
 	kubectl apply -k app/k8s
 	kubectl -n demo rollout status deploy/hello-world --timeout=300s
+
+deploy-tls: ## Apply the app with HTTPS (requires enable_dns=true and a resolvable domain)
+	@CERT=$$($(TF) output -raw app_certificate_arn); FQDN=$$($(TF) output -raw app_fqdn); \
+	if [ -z "$$CERT" ] || [ -z "$$FQDN" ]; then \
+	  echo "enable_dns is off or the certificate is not issued yet -- see dns.tf"; exit 1; fi; \
+	TMP=$$(mktemp -d); cp -R app/k8s app/k8s-tls "$$TMP"/; \
+	sed -i '' -e "s|CERT_ARN_PLACEHOLDER|$$CERT|" -e "s|FQDN_PLACEHOLDER|$$FQDN|" "$$TMP/k8s-tls/ingress-tls.yaml"; \
+	kubectl apply -k "$$TMP/k8s-tls"; rm -rf "$$TMP"; \
+	kubectl -n demo rollout status deploy/hello-world --timeout=300s; \
+	echo "https://$$FQDN"
 
 url: ## Print the public URL of the app
 	@echo "http://$$(kubectl -n demo get ingress hello-world -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"

@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello-world
+  annotations:
+    # Both listeners on one ALB.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+
+    # Placeholder replaced at deploy time from the Terraform output. Left as a
+    # token rather than hardcoded so the manifest in git stays environment-free.
+    alb.ingress.kubernetes.io/certificate-arn: CERT_ARN_PLACEHOLDER
+
+    # Terminate TLS at the ALB with a modern policy. TLS 1.3 with 1.2 fallback.
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+    # Send every plaintext request to HTTPS at the load balancer, so no request
+    # reaches a pod unencrypted.
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+spec:
+  rules:
+    # ExternalDNS reads this host and creates the Route53 alias to the ALB.
+    - host: FQDN_PLACEHOLDER
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hello-world
+                port:
+                  number: 80
