@@ -54,11 +54,36 @@ defaulting to **false**.
   plaintext. TLS terminates at the load balancer; traffic from ALB to pod stays
   inside the VPC.
 
-## Alternatives considered
+## Amendment — registration is in the project
 
-**Register a domain in Route53 Domains** (~$13/year for a `.com`). The cleanest
-fix, and the one to take if the demo needs a real hostname. Not done here
-because it spends money that was not asked for.
+`aws_route53domains_domain` registers a domain, so the registration itself is
+now `domain.tf` rather than a manual step. That keeps the no-ClickOps property
+intact all the way down to the domain, and it is gated on `register_domain`,
+default false.
+
+Three properties of that resource are worth knowing before enabling it:
+
+- **The charge is not refundable, and destroy does not undo it.** A `.com` is
+  $16.00/year. Registrations cannot be cancelled, so `terraform destroy` drops
+  the resource from state while the registration continues. `auto_renew`
+  therefore defaults to **false** — a demo domain that renews itself every year
+  is a bill nobody remembers agreeing to.
+- **Nameservers must be pinned to the existing zone.** Registering through
+  Route53 normally creates a fresh hosted zone and delegates to it. A zone for
+  `elbeetest.com` already exists, so the default behaviour would create a
+  *second* one, point the domain at it, and orphan the first along with every
+  record this stack manages. `name_server` is set from the existing delegation
+  set, and a variable validation refuses to plan if `register_domain` is true
+  while `domain_name_servers` is empty.
+- **Contact details are real.** They go to the registrar and, without privacy
+  protection, into WHOIS. The variable is marked `sensitive`, all four privacy
+  flags are on, and the values belong in a gitignored tfvars file — see
+  `environments/dev.domain.tfvars.example`.
+
+The Route53 Domains API exists only in `us-east-1`, so the resource uses an
+aliased provider rather than assuming `var.region` happens to be that.
+
+## Alternatives considered
 
 **Import a self-signed certificate into ACM.** Free, and it exercises the same
 ALB listener wiring — but every browser shows a warning, which makes for a

@@ -1,0 +1,48 @@
+# Domain registration + DNS/TLS for the dev environment.
+#
+#   cp environments/dev.domain.tfvars.example terraform.tfvars
+#   # fill in domain_contact, then:
+#   make plan ENV=dev && make apply ENV=dev
+#
+# terraform.tfvars is gitignored. Do NOT commit real contact details --
+# they go to the registrar and, without privacy protection, into WHOIS.
+#
+# COST: registering a .com is $16.00 USD, non-refundable. `terraform destroy`
+# does not unregister the domain; registrations cannot be cancelled.
+
+register_domain       = true
+domain_duration_years = 1
+domain_auto_renew     = false # true makes this a standing annual charge
+
+# Delegate to the hosted zone that ALREADY EXISTS, so Route53 does not create a
+# second one and orphan it. Confirm before applying:
+#   aws route53 get-hosted-zone --id Z06069972H7T90FAW0B2Q \
+#     --query DelegationSet.NameServers
+domain_name_servers = [
+  "ns-98.awsdns-12.com",
+  "ns-1235.awsdns-26.org",
+  "ns-875.awsdns-45.net",
+  "ns-1653.awsdns-14.co.uk",
+]
+
+# Real details are required by the registrar. phone_number format is
+# +<country>.<number>, e.g. +1.5551234567
+domain_contact = {
+  contact_type      = "PERSON" # or "COMPANY", which requires organization_name
+  organization_name = null
+  first_name        = ""
+  last_name         = ""
+  address_line_1    = ""
+  city              = ""
+  state             = ""
+  country_code      = "US"
+  zip_code          = ""
+  phone_number      = ""
+  email             = ""
+}
+
+# Turn on the certificate and ExternalDNS once the domain resolves.
+enable_dns     = true
+domain_name    = "elbeetest.com"
+hosted_zone_id = "Z06069972H7T90FAW0B2Q"
+app_subdomain  = "hello"

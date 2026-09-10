@@ -260,3 +260,82 @@ variable "external_dns_chart_version" {
   type        = string
   default     = "1.19.0"
 }
+
+# ---------------------------------------------------------------------------
+# Domain registration
+# ---------------------------------------------------------------------------
+
+variable "register_domain" {
+  description = "Register domain_name through Route53 Domains. THIS SPENDS MONEY and the charge is not refundable; `terraform destroy` does not unregister. Leave false unless you mean it."
+  type        = bool
+  default     = false
+}
+
+variable "domain_duration_years" {
+  description = "Registration period in years."
+  type        = number
+  default     = 1
+}
+
+variable "domain_auto_renew" {
+  description = "Auto-renew the registration each year. Off by default so a demo domain does not become a standing bill."
+  type        = bool
+  default     = false
+}
+
+variable "domain_name_servers" {
+  description = "Hostnames to delegate the registration to. Set these to an EXISTING hosted zone's delegation set, otherwise Route53 creates a second zone and orphans the first. Get them with: aws route53 get-hosted-zone --id <zone-id> --query DelegationSet.NameServers"
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.domain_name_servers) == 0 || length(var.domain_name_servers) >= 2
+    error_message = "A registration needs at least two nameservers."
+  }
+
+  # The expensive mistake this catches: registering without pinning nameservers
+  # makes Route53 create a NEW hosted zone, delegate the domain to it, and leave
+  # the existing zone -- with every record this stack manages -- orphaned and
+  # unreachable. Unpicking that after the fact means a delegation change and
+  # waiting out TTLs.
+  validation {
+    condition     = !var.register_domain || length(var.domain_name_servers) >= 2
+    error_message = "register_domain is true but domain_name_servers is empty. Pin the existing hosted zone's delegation set, or Route53 will create a second zone and orphan the current one. Get them with: aws route53 get-hosted-zone --id <zone-id> --query DelegationSet.NameServers"
+  }
+}
+
+variable "domain_contact" {
+  description = "Registrant, admin and tech contact for the registration. Real details are required by the registrar. Keep them in a gitignored tfvars file -- never commit them."
+  sensitive   = true
+
+  type = object({
+    contact_type      = optional(string, "PERSON")
+    organization_name = optional(string)
+    first_name        = string
+    last_name         = string
+    address_line_1    = string
+    city              = string
+    state             = string
+    country_code      = string
+    zip_code          = string
+    phone_number      = string
+    email             = string
+  })
+
+  default = {
+    first_name     = ""
+    last_name      = ""
+    address_line_1 = ""
+    city           = ""
+    state          = ""
+    country_code   = "US"
+    zip_code       = ""
+    phone_number   = ""
+    email          = ""
+  }
+
+  validation {
+    condition     = var.domain_contact.phone_number == "" || can(regex("^\\+[0-9]{1,3}\\.[0-9]{6,14}$", var.domain_contact.phone_number))
+    error_message = "phone_number must be in the registrar's format: a plus sign, country code, a dot, then the number. For example +1.5551234567."
+  }
+}

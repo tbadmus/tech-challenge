@@ -6,6 +6,18 @@ provider "aws" {
   }
 }
 
+# The Route53 Domains API lives only in us-east-1, regardless of where the rest
+# of the stack is deployed. An alias keeps domain.tf correct if var.region ever
+# moves, instead of silently depending on dev happening to be us-east-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = local.common_tags
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Cluster providers
 # ---------------------------------------------------------------------------
