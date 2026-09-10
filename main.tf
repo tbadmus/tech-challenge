@@ -12,5 +12,10 @@
 module "ecr" {
   source = "./modules/ecr"
 
-  repo_name = var.ecr_repository_name
+  repo_name             = var.ecr_repository_name
+  image_retention_count = var.ecr_image_retention_count
+
+  # Sandbox convenience: lets `terraform destroy` remove the repository without
+  # emptying it by hand first. Never true outside dev.
+  force_delete = var.environment == "dev"
 }
