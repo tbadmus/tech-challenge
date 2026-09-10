@@ -1,6 +1,6 @@
 module "ecr" {
   source    = "./modules/ecr"
-  repo_name = "helloworld1"
+  repo_name = var.ecr_repository_name
 }
 
 module "network1" {
@@ -19,7 +19,7 @@ module "network2" {
 
 module "tgw" {
   source     = "./modules/tgw/gateway"
-  tgw_name   = "mvp"
+  tgw_name   = local.name
   depends_on = [module.network1, module.network2]
 }
 
@@ -140,7 +140,7 @@ module "bastion" {
 #     private_key = file("${path.module}/techkey")
 #   }
 
-  ## Copy files to VM :
+## Copy files to VM :
 #   provisioner "file" {
 #     source      = "${path.module}/app/deployment.yaml"
 #     destination = "/home/${local.username}/deployment.yaml"

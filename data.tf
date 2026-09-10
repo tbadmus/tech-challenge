@@ -17,7 +17,7 @@ data "aws_ami" "ubuntu" {
     values = ["hvm"]
   }
 
-  owners = [data.aws_caller_identity.current.id]
+  owners = [data.aws_caller_identity.current.account_id]
 }
 
 data "aws_iam_policy_document" "bastion-policy" {
@@ -29,8 +29,8 @@ data "aws_iam_policy_document" "bastion-policy" {
     ]
 
     resources = [
-      "arn:aws:ec2:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:instance/*",
-      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.id}:document/SSM-SessionManagerRunShell"
+      "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:instance/*",
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:document/SSM-SessionManagerRunShell"
     ]
 
     condition {

@@ -112,9 +112,10 @@ resource "aws_route_table_association" "priv-route-assoc" {
   route_table_id = aws_route_table.private-route.id
 }
 
+# `vpc = true` was removed in AWS provider v6; `domain` replaces it.
 resource "aws_eip" "main" {
-  count = var.nat_gateway ? 1 : 0
-  vpc   = true
+  count  = var.nat_gateway ? 1 : 0
+  domain = "vpc"
 }
 
 resource "aws_nat_gateway" "main" {
