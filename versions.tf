@@ -14,12 +14,5 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-
-    # Pulled in by the legacy null_resource.sp wrapper around routes.sh.
-    # Both disappear in Phase 1 when the Transit Gateway does.
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.2"
-    }
   }
 }

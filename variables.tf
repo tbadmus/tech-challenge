@@ -160,3 +160,25 @@ variable "ecr_image_retention_count" {
   type        = number
   default     = 20
 }
+
+# ---------------------------------------------------------------------------
+# VPC endpoints and observability
+# ---------------------------------------------------------------------------
+
+variable "enable_interface_endpoints" {
+  description = "Create interface endpoints for ECR, logs, STS, SSM and friends. Roughly $0.01/hour/AZ each -- optional where a NAT gateway exists, mandatory for a fully private cluster."
+  type        = bool
+  default     = false
+}
+
+variable "enable_flow_logs" {
+  description = "Send VPC flow logs to CloudWatch. Costs storage; buys the ability to answer 'why can this pod not reach that'."
+  type        = bool
+  default     = true
+}
+
+variable "flow_log_retention_days" {
+  description = "CloudWatch retention for VPC flow logs."
+  type        = number
+  default     = 14
+}
