@@ -24,7 +24,7 @@ variable "environment" {
 }
 
 variable "region" {
-  description = "AWS region to deploy into."
+  description = "AWS region to deploy into. Set per environment in environments/<env>.tfvars."
   type        = string
   default     = "us-east-1"
 }
@@ -223,19 +223,24 @@ variable "ssm_host_instance_type" {
 # ---------------------------------------------------------------------------
 
 variable "enable_dns" {
-  description = "Issue an ACM certificate and run ExternalDNS. Requires a PUBLICLY RESOLVABLE domain -- ACM validates over public DNS, so an undelegated zone makes the apply hang until it times out."
+  description = "Issue an ACM certificate and manage DNS. Requires an EXISTING, publicly resolvable domain with a Route53 hosted zone in this account -- ACM validates over public DNS, so an undelegated zone makes the apply hang until it times out."
   type        = bool
   default     = false
 }
 
 variable "domain_name" {
-  description = "Apex domain of the Route53 hosted zone, e.g. example.com."
+  description = "Apex domain of an EXISTING Route53 hosted zone in this account, e.g. example.com. This stack never registers a domain -- see ADR-0007."
   type        = string
   default     = ""
+
+  validation {
+    condition     = !var.enable_dns || length(var.domain_name) > 0
+    error_message = "enable_dns is true but domain_name is empty. Supply the apex domain of a hosted zone that already exists in this account."
+  }
 }
 
 variable "hosted_zone_id" {
-  description = "Route53 hosted zone ID for domain_name."
+  description = "Route53 hosted zone ID for domain_name. Leave empty to look the zone up by name instead, which is usually what you want -- the ID differs in every account."
   type        = string
   default     = ""
 }
@@ -247,93 +252,24 @@ variable "app_subdomain" {
 }
 
 
-# ---------------------------------------------------------------------------
-# Domain registration
-# ---------------------------------------------------------------------------
 
-variable "register_domain" {
-  description = "Register domain_name through Route53 Domains. THIS SPENDS MONEY and the charge is not refundable; `terraform destroy` does not unregister. Leave false unless you mean it."
-  type        = bool
-  default     = false
-}
 
-variable "domain_duration_years" {
-  description = "Registration period in years."
-  type        = number
-  default     = 1
-}
 
-variable "domain_auto_renew" {
-  description = "Auto-renew the registration each year. Off by default so a demo domain does not become a standing bill."
-  type        = bool
-  default     = false
-}
 
-variable "domain_name_servers" {
-  description = "Hostnames to delegate the registration to. Set these to an EXISTING hosted zone's delegation set, otherwise Route53 creates a second zone and orphans the first. Get them with: aws route53 get-hosted-zone --id <zone-id> --query DelegationSet.NameServers"
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition     = length(var.domain_name_servers) == 0 || length(var.domain_name_servers) >= 2
-    error_message = "A registration needs at least two nameservers."
-  }
-
-  # The expensive mistake this catches: registering without pinning nameservers
-  # makes Route53 create a NEW hosted zone, delegate the domain to it, and leave
-  # the existing zone -- with every record this stack manages -- orphaned and
-  # unreachable. Unpicking that after the fact means a delegation change and
-  # waiting out TTLs.
-  validation {
-    condition     = !var.register_domain || length(var.domain_name_servers) >= 2
-    error_message = "register_domain is true but domain_name_servers is empty. Pin the existing hosted zone's delegation set, or Route53 will create a second zone and orphan the current one. Get them with: aws route53 get-hosted-zone --id <zone-id> --query DelegationSet.NameServers"
-  }
-}
-
-variable "domain_contact" {
-  description = "Registrant, admin and tech contact for the registration. Real details are required by the registrar. Keep them in a gitignored tfvars file -- never commit them."
-  sensitive   = true
-
-  type = object({
-    contact_type      = optional(string, "PERSON")
-    organization_name = optional(string)
-    first_name        = string
-    last_name         = string
-    address_line_1    = string
-    city              = string
-    state             = string
-    country_code      = string
-    zip_code          = string
-    phone_number      = string
-    email             = string
-  })
-
-  default = {
-    first_name     = ""
-    last_name      = ""
-    address_line_1 = ""
-    city           = ""
-    state          = ""
-    country_code   = "US"
-    zip_code       = ""
-    phone_number   = ""
-    email          = ""
-  }
-
-  validation {
-    condition     = var.domain_contact.phone_number == "" || can(regex("^\\+[0-9]{1,3}\\.[0-9]{6,14}$", var.domain_contact.phone_number))
-    error_message = "phone_number must be in the registrar's format: a plus sign, country code, a dot, then the number. For example +1.5551234567."
-  }
-}
 
 # ---------------------------------------------------------------------------
 # CI/CD — GitHub Actions OIDC
 # ---------------------------------------------------------------------------
 
 variable "enable_github_oidc" {
-  description = "Create the IAM roles GitHub Actions assumes via OIDC."
+  description = "Create the IAM roles GitHub Actions assumes via OIDC. Requires github_repository."
   type        = bool
   default     = true
+
+  validation {
+    condition     = !var.enable_github_oidc || var.github_repository != ""
+    error_message = "enable_github_oidc is true but github_repository is empty. `make` derives it from the git remote; set TF_VAR_github_repository explicitly if you are running terraform directly."
+  }
 }
 
 variable "create_github_oidc_provider" {
@@ -343,12 +279,15 @@ variable "create_github_oidc_provider" {
 }
 
 variable "github_repository" {
-  description = "owner/name of the repository allowed to assume the CI roles. This value IS the security boundary -- never widen it to a wildcard."
+  description = "owner/name of the repository allowed to assume the CI roles. This value IS the security boundary -- never widen it to a wildcard. Deliberately has NO default: a fork inheriting the upstream repo name would create IAM roles trusting somebody else's repository. The Makefile derives it from `git remote get-url origin`."
   type        = string
-  default     = "tbadmus/tech-challenge"
+  default     = ""
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    condition = (
+      var.github_repository == "" ||
+      can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    )
     error_message = "github_repository must be exactly owner/name, with no wildcards."
   }
 }

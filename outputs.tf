@@ -96,6 +96,21 @@ output "tunnel_command" {
   ]) : ""
 }
 
+output "hosted_zone_id" {
+  description = "Resolved Route53 zone ID, whether supplied directly or looked up by name. Consumed by the cluster-addons root module."
+  value       = local.zone_id
+}
+
+output "domain_name" {
+  description = "Apex domain in use. Empty when enable_dns is false."
+  value       = var.domain_name
+}
+
+output "dns_enabled" {
+  description = "Whether DNS and TLS are enabled, so cluster-addons does not need its own copy of the flag."
+  value       = var.enable_dns
+}
+
 output "app_fqdn" {
   description = "Public hostname of the demo app. Empty until enable_dns is set with a resolvable domain."
   value       = local.app_fqdn

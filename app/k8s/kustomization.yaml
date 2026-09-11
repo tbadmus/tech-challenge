@@ -18,11 +18,14 @@ labels:
 #   kustomize edit set image hello-world=<repo>@<digest>
 # This is the replacement for `sed -i` on a tracked file. Kustomize rewrites
 # the reference on the way out, leaving the manifest in git unmodified.
-images:
-  - name: hello-world
-    newName: 841845498000.dkr.ecr.us-east-1.amazonaws.com/hello-world
-    # By digest, not tag. A digest is the only reference that cannot be moved
-    # underneath a running Deployment, and it guarantees the pod spec changes on
-    # every build -- which is what the old :latest + IfNotPresent combination
-    # failed to do, so new code never rolled out.
-    digest: sha256:e3db1feed9d6ac3540effc00168baf6b8b74366d123fc2e4ee450d5837e50476
+# No `images:` block, deliberately.
+#
+# The registry hostname embeds an AWS account id, so committing it makes the
+# repo undeployable in any other account -- the same defect that was removed
+# from the Terraform layer. `make image` records the digest and `make deploy`
+# renders this kustomization into a temp directory with the reference injected,
+# so the file in git stays account-free and nothing edits it in place.
+#
+# Applying this directory directly (kubectl apply -k app/k8s) will fail on an
+# unresolvable image. That is intentional: it fails loudly rather than pulling
+# something unexpected from Docker Hub.

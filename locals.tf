@@ -8,7 +8,7 @@ locals {
       Project     = var.project
       Environment = var.environment
       ManagedBy   = "terraform"
-      Repository  = "tbadmus/tech-challenge"
+      Repository  = var.github_repository
     },
     var.tags,
   )

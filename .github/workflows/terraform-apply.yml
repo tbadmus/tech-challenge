@@ -37,7 +37,9 @@ permissions:
 
 env:
   TF_VERSION: "1.16.2"
-  AWS_REGION: us-east-1
+  # Region is read from environments/<env>.tfvars at run time so it is
+  # defined in exactly one place. See the "Resolve region" step.
+  TF_ENV_DEFAULT: dev
   # The API endpoint allowlist is deliberately absent from environments/*.tfvars
   # because this repository is public -- publishing the one IP permitted to
   # reach the cluster API would be a targeting aid. It arrives as a secret.
@@ -52,6 +54,29 @@ jobs:
     environment: ${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
     steps:
       - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - name: Resolve environment
         id: env
@@ -72,18 +97,16 @@ jobs:
           terraform_wrapper: false
 
       - name: terraform init
-        run: terraform init -reconfigure -backend-config=environments/${{ steps.env.outputs.name }}.s3.tfbackend
+        run: make init ENV=${{ steps.env.outputs.name }}
 
       - name: terraform plan
-        run: |
-          terraform plan -no-color -lock-timeout=5m \
-            -var-file=environments/${{ steps.env.outputs.name }}.tfvars -out=tfplan
+        run: make plan ENV=${{ steps.env.outputs.name }}
 
       - name: terraform apply
-        # Applies the plan file, not a fresh plan. -auto-approve on a re-planned
-        # run applies whatever the world looks like at that moment, which is not
-        # necessarily what the approver saw.
-        run: terraform apply -no-color -lock-timeout=5m tfplan
+        # Applies the saved plan FILE, not a fresh plan. Re-planning at apply
+        # time would apply whatever the world looks like at that moment, which
+        # is not necessarily what the approver reviewed.
+        run: make apply ENV=${{ steps.env.outputs.name }}
 
       - name: Outputs
         run: terraform output -no-color

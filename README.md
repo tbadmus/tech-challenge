@@ -4,9 +4,11 @@ A modern EKS platform on AWS, built entirely in code — including the domain
 registration. Deployed and verified end to end, and written to be read by
 engineers learning how the pieces fit together.
 
-**Live:** https://hello.elbeetest.com
-
 ![The application served over HTTPS through an internet-facing ALB](docs/images/phase4-https-hello-elbeetest.png)
+
+*The demo above ran at `https://hello.elbeetest.com`. The stack is torn down
+between sessions — `make up ENV=dev` rebuilds it, and the URL depends on the
+domain you supply.*
 
 ---
 
@@ -61,24 +63,34 @@ at [diagrams.net](https://app.diagrams.net).
 ## Quick start
 
 ```bash
-aws sso login --profile larry-cdw-sandadmin
-export AWS_PROFILE=larry-cdw-sandadmin
+aws sso login --profile <your-profile>
+export AWS_PROFILE=<your-profile>
 
-make bootstrap                 # state bucket — once per account
-make init  ENV=dev
-make plan  ENV=dev             # read this before applying
-make apply ENV=dev             # ~15 min; the control plane alone is ~11
-
-make addons-init  ENV=dev      # load balancer controller, ExternalDNS, StorageClass
-make addons-apply ENV=dev
-
-make image  ENV=dev            # build, push to ECR, record the digest
-make deploy ENV=dev
-make url    ENV=dev
+make preflight ENV=dev         # shows every value it derived; change nothing
+make up        ENV=dev         # backend, infra, cluster software, app — one command
 ```
 
-`make help` lists every target. Full procedures, verification steps and
-troubleshooting are in the
+**No file edits are required to deploy into a different AWS account.** Everything
+account-specific is derived rather than configured:
+
+| Value | Derived from |
+|---|---|
+| Account id | `aws sts get-caller-identity` |
+| State bucket | `<project>-tfstate-<account-id>`, created if it does not exist |
+| Backend config | generated into `.backend/` at init time, never committed |
+| GitHub repository | `git remote get-url origin`, so a fork never trusts the upstream repo |
+| Region, project | `environments/<env>.tfvars` |
+| Cluster name | `<project>-<env>-cluster` |
+| ECR registry | injected at deploy time; the manifests in git carry no account id |
+
+`make up` runs each stage only after the previous one is genuinely ready — it
+waits for the cluster to report `ACTIVE`, for nodes to become `Ready`, and for
+the load balancer controller's webhook to serve, because none of those are true
+merely because the preceding `apply` returned zero. It shows the plan and asks
+before applying; pass `CONFIRM=1` for unattended runs.
+
+`make down ENV=dev` tears everything down in the order that works. `make help`
+lists every target. Full procedures are in the
 [consumption guide](docs/consumption-guide.docx).
 
 ## Documentation

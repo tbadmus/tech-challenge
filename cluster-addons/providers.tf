@@ -15,9 +15,20 @@ data "terraform_remote_state" "infra" {
 }
 
 locals {
-  cluster_name     = data.terraform_remote_state.infra.outputs.cluster_name
-  cluster_endpoint = data.terraform_remote_state.infra.outputs.cluster_endpoint
-  cluster_ca       = data.terraform_remote_state.infra.outputs.cluster_certificate_authority_data
+  infra = data.terraform_remote_state.infra.outputs
+
+  cluster_name     = local.infra.cluster_name
+  cluster_endpoint = local.infra.cluster_endpoint
+  cluster_ca       = local.infra.cluster_certificate_authority_data
+  region           = local.infra.region
+
+  # Read from the infrastructure root rather than restated in a second tfvars
+  # file. Two files that must agree are one file too many -- and the hosted zone
+  # id in particular differs in every account, so duplicating it is exactly what
+  # makes a repository non-portable.
+  dns_enabled    = local.infra.dns_enabled
+  domain_name    = local.infra.domain_name
+  hosted_zone_id = local.infra.hosted_zone_id
 }
 
 # exec rather than a stored token: EKS tokens last 15 minutes, so a stored one
@@ -29,7 +40,7 @@ provider "kubernetes" {
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", local.cluster_name, "--region", var.region]
+    args        = ["eks", "get-token", "--cluster-name", local.cluster_name, "--region", local.region]
   }
 }
 
@@ -41,7 +52,7 @@ provider "helm" {
     exec = {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", local.cluster_name, "--region", var.region]
+      args        = ["eks", "get-token", "--cluster-name", local.cluster_name, "--region", local.region]
     }
   }
 }

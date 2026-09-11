@@ -41,10 +41,13 @@ spec:
 
       containers:
         - name: hello-world
-          # Replaced by kustomize. The old manifest carried a literal REPO_URL
-          # placeholder that the pipeline rewrote in place with `sed -i`, which
-          # mutated a tracked file and silently no-opped on the second run.
-          image: hello-world
+          # Replaced by kustomize at deploy time. Deliberately not a valid
+          # reference: "hello-world" alone would resolve to docker.io/library/
+          # hello-world and silently deploy the wrong container. The old
+          # manifest used a literal REPO_URL placeholder that the pipeline
+          # rewrote in place with `sed -i`, mutating a tracked file and
+          # silently no-opping on the second run.
+          image: SET-BY-MAKE-DEPLOY/hello-world
           imagePullPolicy: IfNotPresent
 
           ports:

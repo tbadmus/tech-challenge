@@ -50,8 +50,8 @@ resource "helm_release" "aws_load_balancer_controller" {
 
   values = [yamlencode({
     clusterName = local.cluster_name
-    region      = var.region
-    vpcId       = data.terraform_remote_state.infra.outputs.vpc_id
+    region      = local.region
+    vpcId       = local.infra.vpc_id
 
     serviceAccount = {
       create = true
@@ -78,7 +78,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 # the loop from the other side by watching Ingress objects.
 
 resource "helm_release" "external_dns" {
-  count = var.enable_dns ? 1 : 0
+  count = local.dns_enabled ? 1 : 0
 
   name       = "external-dns"
   repository = "https://kubernetes-sigs.github.io/external-dns"
@@ -102,8 +102,8 @@ resource "helm_release" "external_dns" {
     # The chart has no first-class key for it: it must go through extraArgs. A
     # misnamed top-level `zoneIDFilters` is accepted by Helm and silently does
     # nothing, which is exactly how that was missed the first time.
-    domainFilters = [var.domain_name]
-    extraArgs     = ["--zone-id-filter=${var.hosted_zone_id}"]
+    domainFilters = [local.domain_name]
+    extraArgs     = ["--zone-id-filter=${local.hosted_zone_id}"]
 
     # sync, not upsert-only, so records are removed when an Ingress is deleted.
     # Safe because the TXT registry below means ExternalDNS only ever touches
