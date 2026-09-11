@@ -25,4 +25,4 @@ images:
     # underneath a running Deployment, and it guarantees the pod spec changes on
     # every build -- which is what the old :latest + IfNotPresent combination
     # failed to do, so new code never rolled out.
-    digest: sha256:fcf6eb4ec810d3cd56a86ee40d6b59bc02d66d4edd62d6f62c2f856f906592e5
+    digest: sha256:e3db1feed9d6ac3540effc00168baf6b8b74366d123fc2e4ee450d5837e50476
