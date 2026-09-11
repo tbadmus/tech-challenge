@@ -67,13 +67,59 @@ aws sso login --profile <your-profile>
 export AWS_PROFILE=<your-profile>
 
 make preflight ENV=dev         # shows every value it derived; change nothing
-make bootstrap ENV=dev         # once per account: state bucket + CI identity
-make ci-secrets                # push the CI role ARNs to GitHub (optional)
+# --> set cluster_admin_role_arns in terraform.tfvars first; see step 3 below
 make up        ENV=dev         # backend, infra, cluster software, app — one command
 ```
 
 `make up` calls `make bootstrap` implicitly if the state bucket is missing, so
-the explicit call is only needed when you want the CI role ARNs printed.
+`make bootstrap ENV=dev` is only needed when you want the CI role ARNs printed
+(`make ci-secrets` pushes them to GitHub).
+
+### Deploying locally, one step at a time
+
+`make up` runs steps 4–9 for you. They are listed separately because when
+something fails, you resume at a step rather than starting over — and because
+steps 1–3 are yours either way.
+
+| # | Command | What it does |
+|---|---|---|
+| 1 | `aws sso login --profile <p>` + `export AWS_PROFILE=<p>` | Everything downstream derives the account id from this session |
+| 2 | `make preflight ENV=dev` | Prints the account, region, bucket and repo it derived. Changes nothing |
+| 3 | *edit `terraform.tfvars`* | **Grant yourself the cluster** — see below. Do this **before** the apply |
+| 4 | `make bootstrap ENV=dev` | Once per account: state bucket, OIDC provider, CI roles |
+| 5 | `make init` → `make plan` → `make apply ENV=dev` | VPC, EKS, nodes, addons, IAM, ECR, SSM host. ~15 min |
+| 6 | `make wait-cluster` + `make wait-nodes ENV=dev` | Gates. Neither is true just because the apply returned zero |
+| 7 | `make addons-init` → `make addons-apply` → `make wait-controller ENV=dev` | LB controller, ExternalDNS, gp3 StorageClass |
+| 8 | `make image ENV=dev` | Build, push to ECR, record the **digest** (needs Docker) |
+| 9 | `make deploy ENV=dev` → `make url ENV=dev` | Render with the digest, apply, wait for rollout |
+
+**Step 3 is the one people skip.** An AWS account with `AdministratorAccess`
+grants **zero** Kubernetes RBAC, so without an EKS access entry `kubectl` returns
+*"the server has asked for the client to provide credentials"*, the console shows
+*Unauthorized*, and steps 7 and 9 both fail — while every AWS-level check reports
+a perfectly healthy cluster, because it is one.
+
+```hcl
+# terraform.tfvars — gitignored; never commit either value
+cluster_endpoint_public_access_cidrs = ["<your-ip>/32"]
+cluster_admin_role_arns = [
+  "arn:aws:iam::<id>:role/aws-reserved/sso.amazonaws.com/<your-sso-role>",
+  "arn:aws:iam::<id>:role/<project>-gha-apply",   # or CI loses its own kubectl
+]
+```
+
+Mirror both into `TF_VAR_cluster_admin_role_arns` and
+`TF_VAR_cluster_endpoint_public_access_cidrs` as repository secrets so CI
+computes the same access entries you do. Do **not** put them in
+`environments/<env>.tfvars` — a `-var-file` beats both `terraform.tfvars` and
+`TF_VAR_`, so a value there silently overrides CI.
+
+**Where each step can run.** Steps 1–5 talk only to AWS APIs, so CI can do them —
+and the `terraform-apply` workflow does exactly step 5 on a push to `dev`.
+Steps 6–9 talk to the **Kubernetes** API, which is reachable only from an IP on
+the allowlist; GitHub-hosted runners are not in the VPC and get ephemeral egress
+IPs, so they cannot reach a CIDR-restricted endpoint at all. Run those from your
+workstation — or, if your IP is not allowlisted, through `make tunnel ENV=dev`.
 
 **No file edits are required to deploy into a different AWS account.** Everything
 account-specific is derived rather than configured:

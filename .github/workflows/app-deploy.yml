@@ -72,10 +72,58 @@ jobs:
           [ "$STATUS" = "ACTIVE" ] || { echo "::error::Cluster $CLUSTER_NAME is $STATUS, not ACTIVE"; exit 1; }
           echo "cluster $CLUSTER_NAME is ACTIVE"
 
-      - name: Load balancer controller is installed
+      - name: Kubernetes API is reachable from this runner
         run: |
           set -euo pipefail
           aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null
+
+          # Three different failures all exit non-zero from a kubectl call, and
+          # each has a different fix:
+          #
+          #   no network path    the public endpoint is CIDR-allowlisted, and a
+          #                      hosted runner's egress IP is not on that list
+          #   no authorization   the API answered, but this role has no EKS
+          #                      access entry. IAM permissions are irrelevant
+          #   nothing deployed   API fine, the workload is genuinely missing
+          #
+          # The check below used to collapse all three into "the controller is
+          # not installed", which sends you to `make addons-apply` -- a fix that
+          # cannot possibly resolve the first two, stated confidently.
+          #
+          # `timeout` is not belt-and-braces here. kubectl's own
+          # --request-timeout does NOT bound connection establishment: measured
+          # against an unreachable endpoint it was still hanging past 45s, so a
+          # runner that is off the allowlist would stall this job rather than
+          # reach the diagnostic below. An external timeout is what makes the
+          # failure fast enough to be a diagnostic at all.
+          ERR=""; RC=0
+          ERR="$(timeout 30 kubectl get --raw /version --request-timeout=20s 2>&1 >/dev/null)" || RC=$?
+          if [ "$RC" -ne 0 ]; then
+            # 124 is timeout(1) killing it, usually with nothing on stderr yet.
+            [ "$RC" -eq 124 ] && ERR="no response within 30s${ERR:+ (}${ERR}${ERR:+)}"
+            case "$ERR" in
+              *Unauthorized*|*"provide credentials"*)
+                echo "::error::Reached the Kubernetes API of $CLUSTER_NAME, but this role is not authorized. An AWS account with AdministratorAccess grants ZERO Kubernetes RBAC -- the principal needs an EKS access entry. Add it to cluster_admin_role_arns (terraform.tfvars locally, the TF_VAR_cluster_admin_role_arns secret for CI) and apply the infrastructure root."
+                ;;
+              *)
+                # The allowlist itself is deliberately NOT printed. Workflow logs
+                # on a public repository are public, and "the IP addresses
+                # permitted to reach the API of account <id>" is a targeting aid.
+                # The count is enough to tell you the endpoint is restricted.
+                PUB="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.resourcesVpcConfig.endpointPublicAccess --output text)"
+                N="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'length(cluster.resourcesVpcConfig.publicAccessCidrs)' --output text)"
+                echo "::error::Cannot reach the Kubernetes API of $CLUSTER_NAME from this runner (public endpoint enabled: $PUB, allowlisted CIDRs: $N). GitHub-hosted runners get ephemeral egress IPs and are not inside the VPC, so a CIDR-restricted endpoint is unreachable from here BY DESIGN -- this is not a broken cluster. Deploy from a workstation whose IP is on the allowlist (make image ENV=<env> && make deploy ENV=<env>), or move this job to a self-hosted runner in a private subnet. Raw error: ${ERR}"
+                ;;
+            esac
+            exit 1
+          fi
+          echo "API reachable and this role is authorized"
+
+      - name: Load balancer controller is installed
+        run: |
+          set -euo pipefail
+          # Reachability and authorization were established by the step above, so
+          # a failure here really does mean the workload is missing.
           if ! kubectl -n kube-system get deploy aws-load-balancer-controller >/dev/null 2>&1; then
             echo "::error::The AWS Load Balancer Controller is not installed, so the Ingress in this deploy would never get an ALB. Apply the cluster-addons root first: make addons-apply ENV=dev"
             exit 1
