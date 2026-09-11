@@ -21,9 +21,9 @@ permissions:
   id-token: write
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: hello-world
-  CLUSTER_NAME: tech-challenge-dev-cluster
+  # Region is read from environments/<env>.tfvars at run time so it is
+  # defined in exactly one place. See the "Resolve region" step.
+  TF_ENV_DEFAULT: dev
 
 jobs:
   scan:
@@ -31,6 +31,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@master
@@ -56,6 +79,29 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -113,6 +159,29 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4

@@ -51,6 +51,33 @@ then removed.
   the point, and Phase 5 should budget for the backlog they surface.
 - Loss of Jenkins' plugin ecosystem, which this project does not use.
 
+## Amendment — the CI identity moved to bootstrap/
+
+Originally the OIDC provider and both roles were created by the infrastructure
+root module. That was wrong, and a routine teardown proved it: `terraform
+destroy` removed the CI identity along with the infrastructure, and every
+subsequent pull request failed at *Configure AWS credentials via OIDC*. CI
+could no longer authenticate in order to rebuild what it had just destroyed,
+and recovery required an apply from somebody's laptop.
+
+A CI identity that a normal teardown deletes is not a CI identity.
+
+They now live in `bootstrap/`, which already exists to hold the things that
+must be present before anything else can run, is applied once per account, and
+is untouched by the deploy/destroy cycle. `make down` does not reach it, by
+design.
+
+Two consequences worth recording:
+
+- The roles are now per-ACCOUNT rather than per-environment, named
+  `<project>-gha-plan` and `<project>-gha-apply`. That matches how they were
+  always used: the apply role's trust policy accepts both `environment:dev` and
+  `environment:prod`, so one identity serves every environment — which is also
+  why it never belonged in a root module instantiated per environment.
+- The state-lock and guardrail policies can now reference
+  `aws_s3_bucket.tfstate.arn` directly instead of reconstructing the bucket ARN
+  from a project name and an account id. Fewer strings to get wrong.
+
 ## Alternatives considered
 
 **Modernize Jenkins in place.** Keeps the tool an audience may recognize.

@@ -25,10 +25,17 @@ cluster_endpoint_public_access = true
 # Note the precedence: a -var-file on the command line beats terraform.tfvars,
 # so this key must be ABSENT here rather than set to a placeholder.
 
-# SSO permission-set role granted cluster-admin via an EKS access entry.
-cluster_admin_role_arns = [
-  "arn:aws:iam::841845498000:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AWSAdministratorAccess_f3fad16cc8305bb1",
-]
+# Extra IAM principals granted cluster-admin through EKS access entries.
+#
+# Left empty deliberately, and empty is a working default: when this list is
+# empty the EKS module grants cluster-admin to whoever runs the apply, so a
+# fresh account is never left with a cluster nobody can reach. Add teammates'
+# SSO permission-set role ARNs here when more than one person needs access.
+#
+# Role ARNs are account-specific, so hardcoding one makes the repo undeployable
+# anywhere else -- find yours with:
+#   aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO')].Arn"
+cluster_admin_role_arns = []
 
 node_instance_type = "t3.medium" # 17 pods/node; ~$60/mo for two vs ~$121 for t3.large
 node_min_size      = 2
@@ -37,7 +44,21 @@ node_desired_size  = 2
 
 ecr_repository_name = "hello-world"
 
+# ---------------------------------------------------------------------------
+# Public DNS and TLS — optional, off by default so the stack deploys into any
+# account with no prerequisites.
+#
+# This stack never registers a domain (ADR-0007). To enable, you need a domain
+# that ALREADY resolves publicly, with a hosted zone in this account:
+#
+#   enable_dns    = true
+#   domain_name   = "example.com"     # zone is looked up by name
+#   app_subdomain = "hello"           # serves https://hello.example.com
+#
+# hosted_zone_id is only needed to disambiguate duplicate zone names.
+# ---------------------------------------------------------------------------
+enable_dns = false
+
 tags = {
   CostCenter = "sandbox"
-  Owner      = "larry.badmus"
 }

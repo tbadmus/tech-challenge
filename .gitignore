@@ -61,3 +61,7 @@ Thumbs.db
 CLAUDE.local.md
 .claude/settings.local.json
 CLAUDE.md
+
+# Generated backend configuration — derived from the AWS account at init time,
+# never committed, because the bucket name embeds the account id.
+.backend/

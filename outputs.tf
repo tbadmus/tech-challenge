@@ -96,6 +96,21 @@ output "tunnel_command" {
   ]) : ""
 }
 
+output "hosted_zone_id" {
+  description = "Resolved Route53 zone ID, whether supplied directly or looked up by name. Consumed by the cluster-addons root module."
+  value       = local.zone_id
+}
+
+output "domain_name" {
+  description = "Apex domain in use. Empty when enable_dns is false."
+  value       = var.domain_name
+}
+
+output "dns_enabled" {
+  description = "Whether DNS and TLS are enabled, so cluster-addons does not need its own copy of the flag."
+  value       = var.enable_dns
+}
+
 output "app_fqdn" {
   description = "Public hostname of the demo app. Empty until enable_dns is set with a resolvable domain."
   value       = local.app_fqdn
@@ -106,15 +121,7 @@ output "app_certificate_arn" {
   value       = try(aws_acm_certificate_validation.app[0].certificate_arn, "")
 }
 
-output "github_actions_plan_role_arn" {
-  description = "Role assumed by pull-request plan jobs. Read-only plus state locking."
-  value       = try(module.gha_plan_role[0].role_arn, "")
-}
 
-output "github_actions_apply_role_arn" {
-  description = "Role assumed by apply jobs running in a protected GitHub Environment."
-  value       = try(module.gha_apply_role[0].role_arn, "")
-}
 
 output "cluster_certificate_authority_data" {
   description = "Cluster CA, consumed by the cluster-addons root module."
