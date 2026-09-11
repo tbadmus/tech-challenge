@@ -121,3 +121,8 @@ output "cluster_certificate_authority_data" {
   value       = module.eks.cluster_certificate_authority_data
   sensitive   = true
 }
+
+output "container_insights_log_groups" {
+  description = "CloudWatch log groups Fluent Bit ships into."
+  value       = [for g in aws_cloudwatch_log_group.container_insights : g.name]
+}
