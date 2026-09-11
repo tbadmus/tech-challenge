@@ -1,16 +1,30 @@
 # ---------------------------------------------------------------------------
-# GitHub Actions OIDC — ADR-0003
+# GitHub Actions OIDC — ADR-0003, amended
 # ---------------------------------------------------------------------------
-# Replaces the static AWS credentials the Jenkins controller held. GitHub mints
-# a short-lived OIDC token per job; AWS exchanges it for a role session. No
-# long-lived access key exists anywhere in the system, so there is nothing to
-# leak, rotate, or find in a build log.
+# This lives in bootstrap/ rather than the infrastructure root, and the reason
+# is a bootstrapping failure we actually hit.
+#
+# The CI identity used to be created by the same root module it manages. So
+# `terraform destroy` on the infrastructure removed the OIDC provider and both
+# roles -- and CI could then no longer authenticate to rebuild what it had just
+# torn down. Every pull request failed at "Configure AWS credentials via OIDC"
+# until somebody ran an apply from a laptop. A CI identity that a routine
+# teardown deletes is not a CI identity.
+#
+# bootstrap/ is the right home: it already exists to hold the things that must
+# be there before anything else can run, it is applied once per account, and
+# nothing in the normal deploy/destroy cycle touches it.
+#
+# Scope note: these roles are per-ACCOUNT, not per-environment. The apply role
+# trusts both `environment:dev` and `environment:prod`, so one identity serves
+# every environment in the account -- which is also why it does not belong in a
+# root module that is instantiated per environment.
 #
 # THE TRUST POLICY IS THE SECURITY BOUNDARY. The `sub` claim must pin the
-# repository AND the ref or environment. A policy that matches
-# `repo:owner/name:*` lets ANY branch -- including one pushed to a fork by a
-# stranger opening a pull request -- assume the role. Everything below is
-# written as StringEquals on explicit values for that reason.
+# repository AND the ref or environment. A policy matching `repo:owner/name:*`
+# lets ANY branch -- including one pushed to a fork by a stranger opening a pull
+# request -- assume the role. Everything below is StringEquals on explicit
+# values for that reason.
 
 data "aws_iam_openid_connect_provider" "github" {
   count = var.enable_github_oidc && !var.create_github_oidc_provider ? 1 : 0
@@ -28,7 +42,7 @@ resource "aws_iam_openid_connect_provider" "github" {
   # certificate fingerprint here -- and updating it whenever GitHub rotated --
   # is obsolete.
 
-  tags = merge(local.common_tags, { Name = "github-actions" })
+  tags = { Name = "github-actions" }
 }
 
 locals {
@@ -74,11 +88,11 @@ data "aws_iam_policy_document" "gha_plan_assume" {
 }
 
 module "gha_plan_role" {
-  source = "./modules/iam/role"
+  source = "../modules/iam/role"
 
   count = var.enable_github_oidc ? 1 : 0
 
-  role_name          = "${local.name}-gha-plan"
+  role_name          = "${var.project}-gha-plan"
   assume_role_policy = data.aws_iam_policy_document.gha_plan_assume[0].json
 
   managed_policy_arns = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
@@ -101,14 +115,14 @@ data "aws_iam_policy_document" "gha_state_lock" {
       "s3:PutObject",
       "s3:DeleteObject",
     ]
-    resources = ["arn:aws:s3:::${var.project}-tfstate-${data.aws_caller_identity.current.account_id}/*"]
+    resources = ["${aws_s3_bucket.tfstate.arn}/*"]
   }
 
   statement {
     sid       = "StateBucketList"
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
-    resources = ["arn:aws:s3:::${var.project}-tfstate-${data.aws_caller_identity.current.account_id}"]
+    resources = [aws_s3_bucket.tfstate.arn]
   }
 }
 
@@ -144,11 +158,11 @@ data "aws_iam_policy_document" "gha_apply_assume" {
 }
 
 module "gha_apply_role" {
-  source = "./modules/iam/role"
+  source = "../modules/iam/role"
 
   count = var.enable_github_oidc ? 1 : 0
 
-  role_name          = "${local.name}-gha-apply"
+  role_name          = "${var.project}-gha-apply"
   assume_role_policy = data.aws_iam_policy_document.gha_apply_assume[0].json
 
   # Honest compromise, flagged rather than hidden. This stack creates VPCs, EKS
@@ -179,7 +193,7 @@ data "aws_iam_policy_document" "gha_guardrails" {
       "s3:PutBucketVersioning",
       "s3:PutBucketPolicy",
     ]
-    resources = ["arn:aws:s3:::${var.project}-tfstate-${data.aws_caller_identity.current.account_id}"]
+    resources = [aws_s3_bucket.tfstate.arn]
   }
 
   statement {

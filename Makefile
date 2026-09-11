@@ -30,10 +30,10 @@ BUCKET   = $(PROJECT_D)-tfstate-$(ACCOUNT)
 # so the sed delimiter is a comma.
 GH_REPO  = $(shell git remote get-url origin 2>/dev/null | sed -e 's,^git@github.com:,,' -e 's,^https://github.com/,,' -e 's,\.git$$,,')
 
-TFVAR_ARGS = -var-file=$(TFVARS) -var=github_repository=$(GH_REPO)
+TFVAR_ARGS = -var-file=$(TFVARS)
 
 .DEFAULT_GOAL := help
-.PHONY: help preflight backend init plan apply up down destroy fmt validate check clean \
+.PHONY: help preflight bootstrap ci-secrets backend init plan apply up down destroy fmt validate check clean \
         addons-init addons-plan addons-apply addons-destroy \
         image deploy deploy-tls url kubeconfig tunnel wait-cluster wait-nodes wait-controller
 
@@ -81,7 +81,8 @@ backend: preflight ## Ensure the state bucket exists, then generate backend conf
 	  echo "  state bucket missing — creating it with bootstrap/"; \
 	  cd bootstrap && $(TF) init -input=false >/dev/null && \
 	    $(TF) apply -input=false -auto-approve \
-	      -var=project=$(PROJECT_D) -var=region=$(REGION) >/dev/null && \
+	      -var=project=$(PROJECT_D) -var=region=$(REGION) \
+	      -var=github_repository=$(GH_REPO) >/dev/null && \
 	    echo "  created $(BUCKET)"; \
 	else \
 	  echo "  could not determine whether $(BUCKET) exists:"; echo "$$ERR" | head -3; exit 1; \
@@ -96,6 +97,21 @@ backend: preflight ## Ensure the state bucket exists, then generate backend conf
 # ---------------------------------------------------------------------------
 # Infrastructure root
 # ---------------------------------------------------------------------------
+
+bootstrap: preflight ## Apply the bootstrap root: state bucket and CI identity
+	cd bootstrap && $(TF) init -input=false && \
+	  $(TF) apply -input=false \
+	    -var=project=$(PROJECT_D) -var=region=$(REGION) -var=github_repository=$(GH_REPO)
+	@echo ""
+	@echo "  CI role ARNs — set these as repository secrets:"
+	@cd bootstrap && printf '    AWS_PLAN_ROLE_ARN  %s\n' "$$($(TF) output -raw github_actions_plan_role_arn)"
+	@cd bootstrap && printf '    AWS_APPLY_ROLE_ARN %s\n' "$$($(TF) output -raw github_actions_apply_role_arn)"
+
+ci-secrets: ## Push the CI role ARNs to GitHub as repository secrets
+	@cd bootstrap && \
+	  gh secret set AWS_PLAN_ROLE_ARN  --repo $(GH_REPO) --body "$$($(TF) output -raw github_actions_plan_role_arn)" && \
+	  gh secret set AWS_APPLY_ROLE_ARN --repo $(GH_REPO) --body "$$($(TF) output -raw github_actions_apply_role_arn)"
+	@echo "  secrets updated on $(GH_REPO)"
 
 init: backend ## Initialise against the $(ENV) backend
 	$(TF) init -input=false -reconfigure -backend-config=$(BACKEND)
@@ -208,6 +224,9 @@ up: ## Deploy everything: backend, infra, cluster software, application
 _confirm:
 	@printf "  apply the plan above? [y/N] " && read a && [ "$$a" = "y" ]
 
+# Note what `down` does NOT touch: the bootstrap root. The state bucket and the
+# CI identity live there precisely so a routine teardown cannot remove them --
+# CI has to survive in order to rebuild what it just destroyed.
 down: ## Tear everything down, in the order that actually works
 	@echo "==> 1/3 application" && kubectl delete -k app/k8s --ignore-not-found=true || true
 	@echo "==> 2/3 cluster software" && $(MAKE) --no-print-directory addons-destroy ENV=$(ENV) || true

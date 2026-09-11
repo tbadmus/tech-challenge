@@ -8,7 +8,9 @@ locals {
       Project     = var.project
       Environment = var.environment
       ManagedBy   = "terraform"
-      Repository  = var.github_repository
+      # The repository name now lives in bootstrap/ with the CI identity, so
+      # the infrastructure root no longer needs to know it.
+      ManagedIn = "terraform"
     },
     var.tags,
   )

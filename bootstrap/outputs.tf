@@ -13,3 +13,13 @@ output "backend_config_snippet" {
     use_lockfile = true
   EOT
 }
+
+output "github_actions_plan_role_arn" {
+  description = "Role assumed by pull-request plan jobs. Read-only plus state locking."
+  value       = try(module.gha_plan_role[0].role_arn, "")
+}
+
+output "github_actions_apply_role_arn" {
+  description = "Role assumed by apply jobs running in a protected GitHub Environment."
+  value       = try(module.gha_apply_role[0].role_arn, "")
+}

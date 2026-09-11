@@ -16,7 +16,9 @@ provider "aws" {
     tags = {
       Project   = var.project
       ManagedBy = "terraform"
-      Component = "tfstate-backend"
+      # This root now holds two things that must outlive any environment: the
+      # state backend and the CI identity.
+      Component = "bootstrap"
     }
   }
 }

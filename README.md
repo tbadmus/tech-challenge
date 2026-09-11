@@ -67,8 +67,13 @@ aws sso login --profile <your-profile>
 export AWS_PROFILE=<your-profile>
 
 make preflight ENV=dev         # shows every value it derived; change nothing
+make bootstrap ENV=dev         # once per account: state bucket + CI identity
+make ci-secrets                # push the CI role ARNs to GitHub (optional)
 make up        ENV=dev         # backend, infra, cluster software, app — one command
 ```
+
+`make up` calls `make bootstrap` implicitly if the state bucket is missing, so
+the explicit call is only needed when you want the CI role ARNs printed.
 
 **No file edits are required to deploy into a different AWS account.** Everything
 account-specific is derived rather than configured:
@@ -89,7 +94,10 @@ the load balancer controller's webhook to serve, because none of those are true
 merely because the preceding `apply` returned zero. It shows the plan and asks
 before applying; pass `CONFIRM=1` for unattended runs.
 
-`make down ENV=dev` tears everything down in the order that works. `make help`
+`make down ENV=dev` tears everything down in the order that works — and
+deliberately does **not** touch `bootstrap/`. The state bucket and the CI
+identity live there precisely so a routine teardown cannot remove them: CI has
+to survive in order to rebuild what it just destroyed. `make help`
 lists every target. Full procedures are in the
 [consumption guide](docs/consumption-guide.docx).
 
@@ -109,7 +117,7 @@ lists every target. Full procedures are in the
 ```
 .                      infrastructure root module (VPC, EKS, IAM, DNS, ECR)
 cluster-addons/        second root: LB controller, ExternalDNS, StorageClass
-bootstrap/             creates the S3 state backend (local state, by design)
+bootstrap/             state backend + GitHub OIDC CI identity; outlives any environment
 modules/               hand-written modules: ecr, iam/role
 environments/          per-environment tfvars and backend config
 app/                   the demo application and its Kustomize manifests
