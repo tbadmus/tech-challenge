@@ -43,7 +43,17 @@ resource "aws_route53domains_domain" "this" {
   # Delegate to the hosted zone that already exists rather than a new one.
   # See note 2 above -- this is the line that stops the existing zone from
   # being orphaned.
-  name_server = [for ns in var.domain_name_servers : { name = ns }]
+  # glue_ips must be PRESENT because name_server is an object type and every
+  # field of an object is required at the type level -- but it must be null,
+  # not []. Glue records only apply to nameservers inside the domain being
+  # registered; these are AWS-hosted and out-of-bailiwick, so there are none.
+  #
+  # Passing an empty set instead of null makes the provider fail its own
+  # round-trip check on apply: "produced an unexpected new value:
+  # .name_server[0].glue_ips: was cty.SetValEmpty(cty.String), but now null".
+  # The registration still succeeds and lands in state; the apply just reports
+  # four errors it should not. Provider 6.64.0.
+  name_server = [for ns in var.domain_name_servers : { name = ns, glue_ips = null }]
 
   # WHOIS privacy on every contact. Without these, the address and phone number
   # below are published.

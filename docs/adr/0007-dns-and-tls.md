@@ -83,6 +83,46 @@ Three properties of that resource are worth knowing before enabling it:
 The Route53 Domains API exists only in `us-east-1`, so the resource uses an
 aliased provider rather than assuming `var.region` happens to be that.
 
+## What actually happened on apply
+
+Four things the plan did not predict. All are now handled in code; recording
+them because each is a trap the next person will hit.
+
+**The registrar creates its own hosted zone.** `name_server` was pinned to the
+existing zone's delegation set, and that worked -- the domain delegates to
+Z06069972H7T90FAW0B2Q and no records were orphaned. But Route53 *still* created
+a second, empty hosted zone (`HostedZone created by Route53 Registrar`) with a
+different delegation set. Nothing pointed at it, and it was deleted after
+checking it held only NS and SOA. There is no flag on
+`aws_route53domains_domain` to suppress this: pinning nameservers prevents the
+damage, not the zone.
+
+**`glue_ips` must be null, not `[]`.** It has to be *present*, because
+`name_server` is an object type and every field of an object is required at the
+type level. But passing an empty set makes the provider fail its own round-trip
+check: *"produced an unexpected new value: .name_server[0].glue_ips: was
+cty.SetValEmpty(cty.String), but now null"*. Provider 6.64.0.
+
+**A failed apply taints an irreplaceable resource.** Those four errors marked
+`aws_route53domains_domain.this[0]` tainted even though the registration had
+succeeded and was in state. The next plan therefore proposed *destroying and
+re-registering the domain* -- a second $16 charge for a domain that cannot be
+un-registered. `terraform untaint` was the fix. Read the plan before applying
+anything that spends money, every time.
+
+**The chart has no `zoneIDFilters` key.** ExternalDNS needs
+`--zone-id-filter`, and the chart only exposes it through `extraArgs`. A
+top-level `zoneIDFilters` value is accepted by Helm and silently ignored, so
+ExternalDNS saw both zones and tried to write to the wrong one every minute.
+The IAM role -- scoped to a single hosted zone ARN -- is what stopped it, which
+is the argument for scoping roles narrowly even when a config filter is
+supposed to make it unnecessary.
+
+A consequence worth knowing: a record created while the filter was wrong has no
+TXT ownership marker, and ExternalDNS will not retroactively claim a record that
+already matches desired state. It has to be deleted and recreated for the
+registry to take ownership.
+
 ## Alternatives considered
 
 **Import a self-signed certificate into ACM.** Free, and it exercises the same

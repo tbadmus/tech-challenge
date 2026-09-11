@@ -62,11 +62,21 @@ resource "aws_acm_certificate_validation" "app" {
   certificate_arn         = aws_acm_certificate.app[0].arn
   validation_record_fqdns = [for r in aws_route53_record.app_cert_validation : r.fqdn]
 
+  # Without this, nothing orders validation after registration -- Terraform
+  # would happily ask ACM to validate a domain that does not exist yet.
+  depends_on = [aws_route53domains_domain.this]
+
   timeouts {
-    # Fail in 10 minutes rather than the 45-minute default. If validation has
-    # not completed by then the cause is almost always delegation, and a fast
-    # failure is more useful than a long hang.
-    create = "10m"
+    # Two different situations, two different sensible waits.
+    #
+    # Domain already registered: fail in 10 minutes. If validation has not
+    # completed by then the cause is almost always delegation, and a fast
+    # failure says more than a long hang.
+    #
+    # Domain registered in this same apply: allow 45. A brand-new registration
+    # has to reach the registry and propagate before ACM's resolver can see the
+    # validation record, and that is legitimately slow.
+    create = var.register_domain ? "45m" : "10m"
   }
 }
 
@@ -115,10 +125,18 @@ resource "helm_release" "external_dns" {
       name   = "external-dns"
     }
 
-    # Restrict to the one zone this stack owns. Without a domain filter,
-    # ExternalDNS considers every zone the role can reach.
+    # Restrict to the one zone this stack owns.
+    #
+    # domainFilters alone is NOT enough here: registering the domain caused the
+    # Route53 registrar to create a SECOND hosted zone for elbeetest.com, and a
+    # domain filter matches both. ExternalDNS then tried to write to the wrong
+    # one on every reconcile.
+    #
+    # The chart has no first-class key for the zone ID filter -- it has to go
+    # through extraArgs. A misnamed top-level `zoneIDFilters` is accepted by
+    # Helm and silently does nothing, which is exactly how this was missed.
     domainFilters = [var.domain_name]
-    zoneIDFilters = [var.hosted_zone_id]
+    extraArgs     = ["--zone-id-filter=${var.hosted_zone_id}"]
 
     # sync (rather than upsert-only) lets records be removed when the Ingress
     # is deleted. Safe here because the TXT registry below means ExternalDNS

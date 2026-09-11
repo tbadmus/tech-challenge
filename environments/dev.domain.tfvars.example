@@ -30,15 +30,15 @@ domain_name_servers = [
 domain_contact = {
   contact_type      = "PERSON" # or "COMPANY", which requires organization_name
   organization_name = null
-  first_name        = ""
-  last_name         = ""
-  address_line_1    = ""
-  city              = ""
-  state             = ""
+  first_name        = "Larry"
+  last_name         = "Badmus"
+  address_line_1    = "4211 Manor Field Dr."
+  city              = "Bowie"
+  state             = "Maryland"
   country_code      = "US"
-  zip_code          = ""
-  phone_number      = ""
-  email             = ""
+  zip_code          = "20720"
+  phone_number      = "3012213011"
+  email             = "larry.badmus@cdw.com"
 }
 
 # Turn on the certificate and ExternalDNS once the domain resolves.
