@@ -73,21 +73,38 @@ ecr_repository_name = "hello-world"
 kms_key_deletion_window_in_days = 7
 
 # ---------------------------------------------------------------------------
-# Public DNS and TLS — optional, off by default so the stack deploys into any
-# account with no prerequisites.
+# Public DNS and TLS — optional, and DELIBERATELY ABSENT from this file.
 #
-# This stack never registers a domain (ADR-0007). To enable, you need a domain
-# that ALREADY resolves publicly, with a hosted zone in this account:
+# The defaults in variables.tf (enable_dns = false) are what let this stack
+# deploy into a bare account with no prerequisites at all. Naming a domain here
+# would make that claim false for everyone: a fresh account has no hosted zone
+# for it, and data.aws_route53_zone fails the plan with a lookup error that
+# explains nothing about why.
 #
-#   enable_dns    = true
-#   domain_name   = "example.com"     # zone is looked up by name
-#   app_subdomain = "hello"           # serves https://hello.example.com
+# Absent, not `enable_dns = false`. A -var-file on the command line outranks
+# both terraform.tfvars and TF_VAR_, so setting the key here to ANY value --
+# including the default -- would override the two places it is meant to come
+# from. Same rule as cluster_endpoint_public_access_cidrs and
+# cluster_admin_role_arns above.
+#
+# This stack never registers a domain (ADR-0007). To turn DNS and TLS on you
+# need one that ALREADY resolves publicly, with a hosted zone in this account:
+#
+#   terraform.tfvars               (gitignored, for local plan/apply)
+#     enable_dns    = true
+#     domain_name   = "example.com"   # the zone is looked up by NAME
+#     app_subdomain = "hello"         # serves https://hello.example.com
+#
+#   repository variables            (for CI -- variables, not secrets, so the
+#     TF_VAR_enable_dns=true         plan output stays readable rather than
+#     TF_VAR_domain_name=example.com being masked to ***)
+#     TF_VAR_app_subdomain=hello
+#
+# Both must agree. CI computing enable_dns = false against a stack that has DNS
+# on will plan to DESTROY the ACM certificate and its validation records.
 #
 # hosted_zone_id is only needed to disambiguate duplicate zone names.
 # ---------------------------------------------------------------------------
-enable_dns = true
-domain_name = "elbeetest.com"
-app_subdomain = "hello-world"
 
 tags = {
   CostCenter = "sandbox"
