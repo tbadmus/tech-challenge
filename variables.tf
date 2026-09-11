@@ -217,15 +217,6 @@ variable "ssm_host_instance_type" {
   default     = "t3.micro"
 }
 
-# ---------------------------------------------------------------------------
-# Cluster software
-# ---------------------------------------------------------------------------
-
-variable "lb_controller_chart_version" {
-  description = "aws-load-balancer-controller Helm chart version. Pinned so a cluster rebuild does not silently pick up a new controller."
-  type        = string
-  default     = "3.5.0"
-}
 
 # ---------------------------------------------------------------------------
 # Public DNS and TLS
@@ -255,11 +246,6 @@ variable "app_subdomain" {
   default     = "hello"
 }
 
-variable "external_dns_chart_version" {
-  description = "ExternalDNS Helm chart version."
-  type        = string
-  default     = "1.19.0"
-}
 
 # ---------------------------------------------------------------------------
 # Domain registration
