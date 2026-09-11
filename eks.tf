@@ -34,6 +34,16 @@ module "eks" {
     : null
   )
 
+  # --- Secret encryption -----------------------------------------------------
+  # The key and its alias live in kms.tf. The module would happily create both,
+  # but it hardcodes the alias to "eks/<cluster name>" -- a fixed name in the
+  # one service in this stack that cannot delete immediately. See kms.tf.
+  create_kms_key = false
+  encryption_config = {
+    provider_key_arn = aws_kms_key.eks.arn
+    resources        = ["secrets"]
+  }
+
   # --- Authorization ---------------------------------------------------------
   # "API" retires the aws-auth ConfigMap. Under the old setup the only cluster
   # administrator was whichever principal ran the first apply, and adding a
