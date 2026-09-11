@@ -189,11 +189,46 @@ image: ## Build, push to ECR by commit SHA, and record the digest
 
 # Renders into a temp directory rather than editing the tracked kustomization,
 # so the manifests in git stay free of any account's registry hostname.
+# The kustomize image key is the FULL placeholder, not "hello-world".
+#
+# Kustomize matches an images: entry against the whole name component of the
+# reference it finds. deployment.yaml carries
+# "SET-BY-MAKE-DEPLOY/hello-world", and the key "hello-world" does NOT match
+# it -- the transform then does nothing AND SAYS NOTHING, so the placeholder
+# reaches the cluster and the first symptom is ImagePullBackOff surfacing five
+# minutes later as "timed out waiting for the condition", which names neither
+# the image nor the substitution that never happened.
+IMAGE_PLACEHOLDER = SET-BY-MAKE-DEPLOY/hello-world
+
+# Renders a kustomize overlay into $$TMP with the digest injected, then REFUSES
+# to apply anything that still mentions the placeholder.
+#
+# The assertion is the important half. Both ways of setting the image fail
+# silently when they fail: `kustomize edit` exits 0 after matching nothing, and
+# the `sed` this replaces targeted newName:/digest: lines that do not exist in
+# a kustomization.yaml with no images: block -- so it rewrote nothing, exited
+# 0, and the caller could not tell. Rendering and checking the OUTPUT is the
+# only step here that cannot lie.
+#
+# $(1) is the overlay directory under $$TMP to render.
+define render_and_verify
+	if command -v kustomize >/dev/null 2>&1; then \
+	  (cd "$$TMP/k8s" && kustomize edit set image "$(IMAGE_PLACEHOLDER)=$$IMG"); \
+	else \
+	  printf 'images:\n  - name: %s\n    newName: %s\n    digest: %s\n' \
+	    "$(IMAGE_PLACEHOLDER)" "$${IMG%@*}" "$${IMG#*@}" >> "$$TMP/k8s/kustomization.yaml"; \
+	fi; \
+	if kubectl kustomize "$$TMP/$(1)" | grep -q "$(IMAGE_PLACEHOLDER)"; then \
+	  echo "  the image placeholder survived rendering -- refusing to apply"; \
+	  echo "  expected the digest from .backend/$(ENV).image: $$IMG"; \
+	  rm -rf "$$TMP"; exit 1; \
+	fi;
+endef
+
 deploy: ## Deploy the application by digest
 	@IMG=$$(cat .backend/$(ENV).image 2>/dev/null) || { echo "run 'make image' first"; exit 1; }; \
 	TMP=$$(mktemp -d); cp -R app/k8s "$$TMP/"; \
-	(cd "$$TMP/k8s" && kustomize edit set image "hello-world=$$IMG" 2>/dev/null \
-	   || sed -i.bak "s|newName:.*|newName: $${IMG%@*}|; s|digest:.*|digest: $${IMG#*@}|" kustomization.yaml); \
+	$(call render_and_verify,k8s) \
 	kubectl apply -k "$$TMP/k8s"; rm -rf "$$TMP"; \
 	kubectl -n demo rollout status deploy/hello-world --timeout=300s
 
@@ -207,9 +242,8 @@ deploy-tls: ## Deploy the application over HTTPS (requires enable_dns and a reso
 	if [ -z "$$CERT" ] || [ -z "$$FQDN" ]; then \
 	  echo "enable_dns is off, or the certificate is not issued yet -- see dns.tf"; exit 1; fi; \
 	TMP=$$(mktemp -d); cp -R app/k8s app/k8s-tls "$$TMP"/; \
-	(cd "$$TMP/k8s" && kustomize edit set image "hello-world=$$IMG" 2>/dev/null \
-	   || sed -i.bak "s|newName:.*|newName: $${IMG%@*}|; s|digest:.*|digest: $${IMG#*@}|" kustomization.yaml); \
 	sed -i.bak -e "s|CERT_ARN_PLACEHOLDER|$$CERT|" -e "s|FQDN_PLACEHOLDER|$$FQDN|" "$$TMP/k8s-tls/ingress-tls.yaml"; \
+	$(call render_and_verify,k8s-tls) \
 	kubectl apply -k "$$TMP/k8s-tls"; rm -rf "$$TMP"; \
 	kubectl -n demo rollout status deploy/hello-world --timeout=300s; \
 	echo "  https://$$FQDN"
@@ -234,7 +268,13 @@ up: ## Deploy everything: backend, infra, cluster software, application
 	  && $(MAKE) --no-print-directory addons-apply ENV=$(ENV) \
 	  && $(MAKE) --no-print-directory wait-controller ENV=$(ENV)
 	@echo "==> 5/6 application image" && $(MAKE) --no-print-directory image ENV=$(ENV)
-	@echo "==> 6/6 deploy"       && $(MAKE) --no-print-directory deploy ENV=$(ENV)
+	@echo "==> 6/6 deploy" && \
+	  if [ -n "$$($(TF) output -raw app_fqdn 2>/dev/null)" ]; then \
+	    echo "  enable_dns is on -- deploying over HTTPS"; \
+	    $(MAKE) --no-print-directory deploy-tls ENV=$(ENV); \
+	  else \
+	    $(MAKE) --no-print-directory deploy ENV=$(ENV); \
+	  fi
 	@echo ""
 	@echo "  done: $$($(MAKE) --no-print-directory url ENV=$(ENV))"
 

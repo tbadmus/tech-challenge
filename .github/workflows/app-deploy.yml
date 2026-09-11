@@ -307,8 +307,23 @@ jobs:
           cd app/k8s
           # kustomize edit writes the reference; nothing sed-edits a tracked
           # file in place, and the change is scoped to this checkout.
-          kustomize edit set image "hello-world=${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}"
-          kubectl kustomize . | head -40
+          #
+          # The key is the FULL placeholder, not "hello-world". Kustomize
+          # matches an images: entry against the whole name component of the
+          # reference, so "hello-world" does not match
+          # "SET-BY-MAKE-DEPLOY/hello-world" -- and a non-match is silent. This
+          # job never caught it because it has only ever run after an earlier
+          # job failed, so the deploy was always skipped.
+          kustomize edit set image "SET-BY-MAKE-DEPLOY/hello-world=${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}"
+
+          # Check the RENDER, not the exit code. Both ways of setting an image
+          # exit 0 after matching nothing; the output is the only thing here
+          # that cannot lie about whether the substitution happened.
+          if kubectl kustomize . | grep -q 'SET-BY-MAKE-DEPLOY'; then
+            echo "::error::The image placeholder survived rendering, so this deploy would apply an unpullable reference and fail several minutes later as a rollout timeout. Expected ${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}."
+            exit 1
+          fi
+          kubectl kustomize . | grep -A1 'image:' | head -10
 
       - name: Apply
         run: |
