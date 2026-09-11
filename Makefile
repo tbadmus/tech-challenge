@@ -59,14 +59,32 @@ preflight: ## Check credentials, tools, and derived values
 	@echo "  repository $(GH_REPO)"
 
 backend: preflight ## Ensure the state bucket exists, then generate backend config
-	@if aws s3api head-bucket --bucket $(BUCKET) >/dev/null 2>&1; then \
+	@# head-bucket distinguishes three outcomes, and conflating them is a trap:
+	@#   exit 0  -> exists and readable
+	@#   404     -> does not exist, safe to create
+	@#   403     -> EXISTS but this principal cannot see it. Treating that as
+	@#              "missing" makes Terraform try to create a bucket that is
+	@#              already there, which fails confusingly several errors deep.
+	@#              Almost always the wrong role, so say so.
+	@ERR=$$(aws s3api head-bucket --bucket $(BUCKET) 2>&1); RC=$$?; \
+	if [ $$RC -eq 0 ]; then \
 	  echo "  state bucket exists: $(BUCKET)"; \
-	else \
+	elif echo "$$ERR" | grep -q '403\|Forbidden'; then \
+	  echo ""; \
+	  echo "  The state bucket $(BUCKET) EXISTS but this identity cannot read it:"; \
+	  echo "    $$(aws sts get-caller-identity --query Arn --output text)"; \
+	  echo ""; \
+	  echo "  This is a permissions problem, not a missing bucket. Re-authenticate"; \
+	  echo "  with a permission set that has S3 access to it."; \
+	  exit 1; \
+	elif echo "$$ERR" | grep -q '404\|Not Found'; then \
 	  echo "  state bucket missing — creating it with bootstrap/"; \
 	  cd bootstrap && $(TF) init -input=false >/dev/null && \
 	    $(TF) apply -input=false -auto-approve \
 	      -var=project=$(PROJECT_D) -var=region=$(REGION) >/dev/null && \
 	    echo "  created $(BUCKET)"; \
+	else \
+	  echo "  could not determine whether $(BUCKET) exists:"; echo "$$ERR" | head -3; exit 1; \
 	fi
 	@mkdir -p .backend
 	@printf 'bucket       = "%s"\nkey          = "%s/terraform.tfstate"\nregion       = "%s"\nencrypt      = true\nuse_lockfile = true\n' \
