@@ -30,6 +30,10 @@ resource "aws_instance" "ssm" {
   ami           = data.aws_ssm_parameter.al2023.value
   instance_type = var.ssm_host_instance_type
 
+  # t3 instances are EBS-optimized unconditionally; stating it explicitly is
+  # accurate and costs nothing.
+  ebs_optimized = true
+
   subnet_id              = module.vpc.private_subnets[0]
   vpc_security_group_ids = [aws_security_group.ssm[0].id]
   iam_instance_profile   = aws_iam_instance_profile.ssm[0].name
