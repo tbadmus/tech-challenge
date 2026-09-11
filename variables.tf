@@ -107,7 +107,23 @@ variable "cluster_endpoint_public_access_cidrs" {
 }
 
 variable "cluster_admin_role_arns" {
-  description = "IAM role ARNs granted cluster-admin through EKS access entries. Typically SSO permission-set roles."
+  description = <<-EOT
+    IAM role ARNs granted cluster-admin through EKS access entries, typically SSO
+    permission-set roles. Use the FULL ARN including the path -- SSO roles live
+    under /aws-reserved/sso.amazonaws.com/.
+
+    An AWS account with AdministratorAccess grants zero Kubernetes RBAC, so a
+    principal missing from this list gets "the server has asked for the client to
+    provide credentials" from kubectl and "Unauthorized" in the console, no matter
+    what its IAM policy says.
+
+    Do NOT list the role that runs the apply. The module grants that one already
+    (enable_cluster_creator_admin_permissions), and a second access entry for the
+    same principal fails with ResourceInUseException after the cluster exists.
+
+    Set this in terraform.tfvars and in the TF_VAR_cluster_admin_role_arns CI
+    secret -- never in environments/*.tfvars, which would override both.
+  EOT
   type        = list(string)
   default     = []
 }

@@ -27,6 +27,7 @@ env:
   # TF_VAR_ env vars have the LOWEST precedence of any variable source, which
   # is exactly why the key must stay unset in the tfvars file.
   TF_VAR_cluster_endpoint_public_access_cidrs: ${{ secrets.TF_VAR_cluster_endpoint_public_access_cidrs }}
+  TF_VAR_cluster_admin_role_arns: ${{ secrets.TF_VAR_cluster_admin_role_arns }}
 
 jobs:
   validate:

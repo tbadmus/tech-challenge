@@ -52,8 +52,13 @@ module "eks" {
   # in a pull request.
   authentication_mode = "API"
 
+  # Keyed by role name, not by list position. With `for idx, arn in ...` the map
+  # keys are positional, so reordering the list -- or dropping an early element
+  # -- renames every key after it, and Terraform reads a rename as destroy-then-
+  # create of an access entry that did not actually change. Role names are
+  # unique within an account, so they are the stable identity here.
   access_entries = {
-    for idx, arn in var.cluster_admin_role_arns : "admin-${idx}" => {
+    for arn in var.cluster_admin_role_arns : reverse(split("/", arn))[0] => {
       principal_arn = arn
       policy_associations = {
         admin = {
@@ -64,12 +69,27 @@ module "eks" {
     }
   }
 
-  # Fallback, and only a fallback. When cluster_admin_role_arns is populated
-  # the entries above are the grant, and asking the module to also add the
-  # caller would create a SECOND access entry for the same principal -- which
-  # EKS rejects with ResourceInUseException, after the cluster has already been
-  # created. When the list is empty this keeps whoever applies from being locked
-  # out of a cluster nobody can reach.
+  # A fallback for exactly one case: an empty list.
+  #
+  # This flag grants cluster-admin to whoever runs the apply, which is the only
+  # thing standing between a fresh account and a cluster nobody can reach. It is
+  # also the only identity-DEPENDENT input in this module block, and identity is
+  # not stable here: the plan job assumes the read-only plan role and the apply
+  # job assumes the apply role, on purpose. So while this flag is on, plan and
+  # apply compute different access entries and the plan gate stops telling the
+  # truth about what apply will do.
+  #
+  # Turning it off whenever anyone is listed -- the condition below -- is
+  # therefore correct, and it was correct before. The failure it produced was
+  # operational: the list has to include EVERY principal that needs the cluster,
+  # and CI's apply role is one of them. app-deploy.yml runs kubectl as that role.
+  # Listing only humans revokes CI, and the first symptom is an app deploy
+  # failing long after the change that caused it.
+  #
+  # The empty-list branch also cannot produce a duplicate entry, since nothing is
+  # listed to collide with. Populated, the module adds no caller entry at all --
+  # which is what makes "list the role you are applying with" safe rather than a
+  # ResourceInUseException after the cluster already exists.
   enable_cluster_creator_admin_permissions = length(var.cluster_admin_role_arns) == 0
 
   # --- Control plane logging -------------------------------------------------
