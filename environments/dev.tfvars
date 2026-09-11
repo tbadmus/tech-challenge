@@ -85,7 +85,9 @@ kms_key_deletion_window_in_days = 7
 #
 # hosted_zone_id is only needed to disambiguate duplicate zone names.
 # ---------------------------------------------------------------------------
-enable_dns = false
+enable_dns = true
+domain_name = "elbeetest.com"
+app_subdomain = "hello-world"
 
 tags = {
   CostCenter = "sandbox"
