@@ -15,7 +15,25 @@ name: terraform-apply
 on:
   push:
     branches: [dev, main]
-    paths-ignore: ['docs/**', '**/*.md']
+    # An ALLOW-list, not paths-ignore.
+    #
+    # This previously read `paths-ignore: ['docs/**', '**/*.md']`, which meant
+    # every change that was not documentation applied infrastructure --
+    # including edits to the workflow files themselves. Merging a CI-only
+    # change therefore rebuilt a torn-down environment, twice, and each
+    # cancellation left an orphaned EKS cluster that Terraform had created but
+    # never recorded in state.
+    #
+    # Applying real infrastructure should require a change to real
+    # infrastructure. Anything else goes through workflow_dispatch.
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/.terraform.lock.hcl'
+      - 'environments/**'
+      - 'bootstrap/**'
+      - 'cluster-addons/**'
+      - 'modules/**'
   workflow_dispatch:
     inputs:
       environment:
