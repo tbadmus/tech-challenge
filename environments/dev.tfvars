@@ -25,17 +25,40 @@ cluster_endpoint_public_access = true
 # Note the precedence: a -var-file on the command line beats terraform.tfvars,
 # so this key must be ABSENT here rather than set to a placeholder.
 
-# Extra IAM principals granted cluster-admin through EKS access entries.
+# Humans granted cluster-admin, through EKS access entries.
 #
-# Left empty deliberately, and empty is a working default: when this list is
-# empty the EKS module grants cluster-admin to whoever runs the apply, so a
-# fresh account is never left with a cluster nobody can reach. Add teammates'
-# SSO permission-set role ARNs here when more than one person needs access.
+# DELIBERATELY ABSENT from this file, for the same two reasons as the CIDR
+# allowlist above -- and the first one is a trap worth understanding.
 #
-# Role ARNs are account-specific, so hardcoding one makes the repo undeployable
-# anywhere else -- find yours with:
+# 1. PRECEDENCE. A -var-file on the command line beats both terraform.tfvars and
+#    TF_VAR_ environment variables. Setting this key here to ANY value, even the
+#    empty list, would therefore override what CI passes and silently revoke
+#    every human's access on the next pipeline apply. Absent is the only safe
+#    state; a placeholder is not.
+#
+# 2. Role ARNs carry the account id and the permission-set id. This repository
+#    is public, and "the principal that administers the cluster in account <id>"
+#    is a targeting aid rather than configuration.
+#
+# Set it in the two places that are not tracked:
+#
+#   terraform.tfvars               (gitignored, for local plan/apply)
+#     cluster_admin_role_arns = ["arn:aws:iam::<id>:role/aws-reserved/sso.amazonaws.com/<role>"]
+#
+#   gh secret set TF_VAR_cluster_admin_role_arns   (for CI)
+#     value: ["arn:aws:iam::<id>:role/aws-reserved/sso.amazonaws.com/<role>"]
+#
+# Find yours with:
 #   aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO')].Arn"
-cluster_admin_role_arns = []
+#
+# Leaving it unset is a working default -- the apply principal is granted
+# cluster-admin either way -- but "working" means CI can reach the cluster. YOU
+# cannot. An AWS account with AdministratorAccess grants exactly zero Kubernetes
+# RBAC: kubectl returns "the server has asked for the client to provide
+# credentials", and the console Resources tab shows "Unauthorized".
+#
+# Do NOT list the role that runs the apply. The module already grants it, and a
+# second entry for the same principal fails with ResourceInUseException.
 
 node_instance_type = "t3.medium" # 17 pods/node; ~$60/mo for two vs ~$121 for t3.large
 node_min_size      = 2

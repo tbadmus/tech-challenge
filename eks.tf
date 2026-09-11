@@ -52,8 +52,13 @@ module "eks" {
   # in a pull request.
   authentication_mode = "API"
 
+  # Keyed by role name, not by list position. With `for idx, arn in ...` the map
+  # keys are positional, so reordering the list -- or dropping an early element
+  # -- renames every key after it, and Terraform reads a rename as destroy-then-
+  # create of an access entry that did not actually change. Role names are
+  # unique within an account, so they are the stable identity here.
   access_entries = {
-    for idx, arn in var.cluster_admin_role_arns : "admin-${idx}" => {
+    for arn in var.cluster_admin_role_arns : reverse(split("/", arn))[0] => {
       principal_arn = arn
       policy_associations = {
         admin = {
@@ -64,13 +69,35 @@ module "eks" {
     }
   }
 
-  # Fallback, and only a fallback. When cluster_admin_role_arns is populated
-  # the entries above are the grant, and asking the module to also add the
-  # caller would create a SECOND access entry for the same principal -- which
-  # EKS rejects with ResourceInUseException, after the cluster has already been
-  # created. When the list is empty this keeps whoever applies from being locked
-  # out of a cluster nobody can reach.
-  enable_cluster_creator_admin_permissions = length(var.cluster_admin_role_arns) == 0
+  # A fallback for exactly one case: nobody listed themselves.
+  #
+  # This flag makes the module grant cluster-admin to whoever runs the apply.
+  # That is useful when cluster_admin_role_arns is empty -- a fresh account is
+  # never left with a cluster nobody can reach -- and actively harmful once the
+  # list is populated, in two different ways:
+  #
+  #   - list the caller's own role and the module adds a SECOND access entry for
+  #     the same principal, which EKS rejects with ResourceInUseException, after
+  #     the cluster already exists
+  #   - leave the caller out and the grant becomes identity-dependent: CI plans
+  #     as one role and applies as another, so every plan proposes replacing the
+  #     entry, and a local apply quietly moves cluster-admin away from CI -- which
+  #     surfaces much later as app-deploy failing to kubectl
+  #
+  # `length(...) == 0` got this backwards: it turned the fallback OFF the moment
+  # anyone was listed, so naming the first human revoked CI. The condition that
+  # actually holds is "am I already covered by the list":
+  #
+  #   caller in the list  -> off, the list is authoritative and complete
+  #   caller not listed   -> on, so the apply cannot lock itself out
+  #
+  # Put EVERY principal that needs the cluster in the list, CI's apply role
+  # included. Then both CI and a laptop compute the same set of access entries
+  # and the grant stops depending on who is looking at it.
+  enable_cluster_creator_admin_permissions = !contains(
+    var.cluster_admin_role_arns,
+    data.aws_iam_session_context.current.issuer_arn,
+  )
 
   # --- Control plane logging -------------------------------------------------
   enabled_log_types                      = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
