@@ -73,6 +73,22 @@ skip-check:
   # permanently unreadable. Same trade rejected for ECR and the state bucket.
   - CKV_AWS_158
 
+  # --- Cluster encryption key ---------------------------------------------
+  # CKV2_AWS_64 "Ensure KMS key Policy is defined". aws_kms_key.eks deliberately
+  # carries no `policy`, so AWS applies the default one -- and the default is
+  # what makes the design work: it grants the account root kms:*, which is the
+  # mechanism by which an IAM policy is allowed to delegate access to the key.
+  # The EKS module then attaches exactly the right IAM policy to the cluster
+  # role (aws_iam_policy.cluster_encryption, scoped to this key's ARN).
+  #
+  # This is not "we could not be bothered". A hand-written policy would have to
+  # name the cluster role, which the module derives from the key ARN -- a
+  # dependency cycle. The only policy writable here without that role is the
+  # default policy restated, which would satisfy the checker and change nothing.
+  # Satisfying a gate with a no-op is worse than recording why it does not fit.
+  # See ADR-0008.
+  - CKV2_AWS_64
+
   # --- Module sourcing ----------------------------------------------------
   # CKV_TF_1 "module source should use a commit hash". That rule targets git
   # sources. These are registry modules with version constraints, which is the
