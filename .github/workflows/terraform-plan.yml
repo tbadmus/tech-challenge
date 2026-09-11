@@ -20,6 +20,12 @@ env:
   TF_VERSION: "1.16.2"
   AWS_REGION: us-east-1
   TF_ENV: dev
+  # The API endpoint allowlist is deliberately absent from environments/*.tfvars
+  # because this repository is public -- publishing the one IP permitted to
+  # reach the cluster API would be a targeting aid. It arrives as a secret.
+  # TF_VAR_ env vars have the LOWEST precedence of any variable source, which
+  # is exactly why the key must stay unset in the tfvars file.
+  TF_VAR_cluster_endpoint_public_access_cidrs: ${{ secrets.TF_VAR_cluster_endpoint_public_access_cidrs }}
 
 jobs:
   validate:

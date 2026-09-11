@@ -87,7 +87,7 @@ run, with AMIs and snapshots accumulating forever.
 | IaC checks | none | `fmt -check`, `validate`, tflint, checkov — all blocking |
 | Plan visibility | buried in console output | posted and updated as a PR comment |
 | State | one key, all branches | per-environment backend config, S3 native locking |
-| Prod apply | `-auto-approve` on push | `workflow_dispatch` only, bound to a GitHub Environment |
+| Prod apply | `-auto-approve` on push | blocked on a required reviewer, plus an AWS trust policy that only accepts `environment:prod` |
 | Image reference | implicit `:latest`, mutable repo | commit SHA then deployed by digest, immutable repo |
 | Manifests | `sed -i` on tracked files | Kustomize image transformer |
 | Secrets | `sed` into YAML on disk | none in the pipeline |
