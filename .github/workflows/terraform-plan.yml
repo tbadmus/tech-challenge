@@ -40,6 +40,14 @@ jobs:
       # read from environments/<env>.tfvars, so no value is duplicated into
       # this file where it would silently drift.
       - name: Resolve configuration
+        env:
+          # Repository VARIABLES, not secrets, and deliberately so. GitHub masks
+          # secret values in log output, and a masked domain name turns every
+          # plan comment into a wall of *** -- unreadable, for a value that is
+          # public the moment anyone resolves the hostname.
+          DNS_ENABLED: ${{ vars.TF_VAR_enable_dns }}
+          DNS_DOMAIN: ${{ vars.TF_VAR_domain_name }}
+          DNS_SUBDOMAIN: ${{ vars.TF_VAR_app_subdomain }}
         run: |
           set -euo pipefail
           ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
@@ -57,6 +65,16 @@ jobs:
             echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
             echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
           } >> "$GITHUB_ENV"
+
+          # Optional per-account DNS settings, exported ONLY when the repository
+          # defines them. An empty TF_VAR_ is a VALUE, not an absence:
+          # TF_VAR_enable_dns="" does not parse as a bool, and
+          # TF_VAR_app_subdomain="" would override that variable's own default
+          # with an empty string. So test before exporting, and let the defaults
+          # in variables.tf stay the single source of truth.
+          if [ -n "${DNS_ENABLED:-}" ];   then echo "TF_VAR_enable_dns=$DNS_ENABLED"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_DOMAIN:-}" ];    then echo "TF_VAR_domain_name=$DNS_DOMAIN"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_SUBDOMAIN:-}" ]; then echo "TF_VAR_app_subdomain=$DNS_SUBDOMAIN" >> "$GITHUB_ENV"; fi
           echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - uses: hashicorp/setup-terraform@v3
@@ -104,6 +122,14 @@ jobs:
       # read from environments/<env>.tfvars, so no value is duplicated into
       # this file where it would silently drift.
       - name: Resolve configuration
+        env:
+          # Repository VARIABLES, not secrets, and deliberately so. GitHub masks
+          # secret values in log output, and a masked domain name turns every
+          # plan comment into a wall of *** -- unreadable, for a value that is
+          # public the moment anyone resolves the hostname.
+          DNS_ENABLED: ${{ vars.TF_VAR_enable_dns }}
+          DNS_DOMAIN: ${{ vars.TF_VAR_domain_name }}
+          DNS_SUBDOMAIN: ${{ vars.TF_VAR_app_subdomain }}
         run: |
           set -euo pipefail
           ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
@@ -121,6 +147,16 @@ jobs:
             echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
             echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
           } >> "$GITHUB_ENV"
+
+          # Optional per-account DNS settings, exported ONLY when the repository
+          # defines them. An empty TF_VAR_ is a VALUE, not an absence:
+          # TF_VAR_enable_dns="" does not parse as a bool, and
+          # TF_VAR_app_subdomain="" would override that variable's own default
+          # with an empty string. So test before exporting, and let the defaults
+          # in variables.tf stay the single source of truth.
+          if [ -n "${DNS_ENABLED:-}" ];   then echo "TF_VAR_enable_dns=$DNS_ENABLED"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_DOMAIN:-}" ];    then echo "TF_VAR_domain_name=$DNS_DOMAIN"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_SUBDOMAIN:-}" ]; then echo "TF_VAR_app_subdomain=$DNS_SUBDOMAIN" >> "$GITHUB_ENV"; fi
           echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
 
       - name: Configure AWS credentials via OIDC
