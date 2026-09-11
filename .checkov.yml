@@ -43,6 +43,11 @@ skip-check:
   - CKV2_AWS_5
 
   # --- SSM access host ----------------------------------------------------
+  # CKV_AWS_135 "EC2 should be EBS optimized". t3 instances are EBS-optimized
+  # unconditionally, so the attribute is cosmetic here -- but it is ForceNew,
+  # so setting it replaces the instance. Rebuilding a host to satisfy a checker
+  # for a property that is already true is the wrong trade.
+  - CKV_AWS_135
   # CKV_AWS_126 EC2 detailed monitoring. This is a t3.micro jump host that
   # terminates a port-forward and runs no workload; per-minute metrics would be
   # a standing cost for data nobody reads.

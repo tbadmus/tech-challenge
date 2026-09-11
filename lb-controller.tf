@@ -38,43 +38,6 @@ module "lb_controller_pod_identity" {
   tags = local.common_tags
 }
 
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  version    = var.lb_controller_chart_version
-  namespace  = "kube-system"
-
-  # Wait for the webhook to be serving before any Ingress is created, otherwise
-  # the first Ingress admission request fails against a missing webhook.
-  wait    = true
-  timeout = 600
-
-  values = [yamlencode({
-    clusterName = module.eks.cluster_name
-    region      = var.region
-    vpcId       = module.vpc.vpc_id
-
-    serviceAccount = {
-      create = true
-      name   = "aws-load-balancer-controller"
-      # No eks.amazonaws.com/role-arn annotation: IAM arrives through the Pod
-      # Identity association above, not IRSA. Annotating it as well would give
-      # the pod two credential sources and make debugging ambiguous.
-    }
-
-    # Two replicas with leader election, spread across nodes. A single-replica
-    # controller is a single point of failure for every Ingress in the cluster.
-    replicaCount = 2
-
-    resources = {
-      requests = { cpu = "50m", memory = "128Mi" }
-      limits   = { memory = "256Mi" }
-    }
-  })]
-
-  depends_on = [
-    module.lb_controller_pod_identity,
-    module.eks,
-  ]
-}
+# The Helm release itself lives in cluster-addons/ -- see that module's README.
+# Only the IAM half belongs here, because it is an AWS resource and needs no
+# network path to the cluster.

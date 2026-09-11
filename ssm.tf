@@ -30,10 +30,6 @@ resource "aws_instance" "ssm" {
   ami           = data.aws_ssm_parameter.al2023.value
   instance_type = var.ssm_host_instance_type
 
-  # t3 instances are EBS-optimized unconditionally; stating it explicitly is
-  # accurate and costs nothing.
-  ebs_optimized = true
-
   subnet_id              = module.vpc.private_subnets[0]
   vpc_security_group_ids = [aws_security_group.ssm[0].id]
   iam_instance_profile   = aws_iam_instance_profile.ssm[0].name
@@ -50,6 +46,15 @@ resource "aws_instance" "ssm" {
     volume_size = 20
     volume_type = "gp3"
     encrypted   = true
+  }
+
+  lifecycle {
+    # data.aws_ssm_parameter resolves the LATEST AL2023 AMI, so a new AMI
+    # release would otherwise replace this instance on the next unrelated
+    # apply. That is precisely the churn the review flagged in the original
+    # bastion, which used data.aws_ami with most_recent = true. Rebuilding the
+    # jump host is a deliberate act: bump it by tainting, not by accident.
+    ignore_changes = [ami]
   }
 
   user_data_replace_on_change = true

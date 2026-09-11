@@ -108,51 +108,5 @@ module "external_dns_pod_identity" {
   tags = local.common_tags
 }
 
-resource "helm_release" "external_dns" {
-  count = var.enable_dns ? 1 : 0
-
-  name       = "external-dns"
-  repository = "https://kubernetes-sigs.github.io/external-dns"
-  chart      = "external-dns"
-  version    = var.external_dns_chart_version
-  namespace  = "kube-system"
-
-  values = [yamlencode({
-    provider = { name = "aws" }
-
-    serviceAccount = {
-      create = true
-      name   = "external-dns"
-    }
-
-    # Restrict to the one zone this stack owns.
-    #
-    # domainFilters alone is NOT enough here: registering the domain caused the
-    # Route53 registrar to create a SECOND hosted zone for elbeetest.com, and a
-    # domain filter matches both. ExternalDNS then tried to write to the wrong
-    # one on every reconcile.
-    #
-    # The chart has no first-class key for the zone ID filter -- it has to go
-    # through extraArgs. A misnamed top-level `zoneIDFilters` is accepted by
-    # Helm and silently does nothing, which is exactly how this was missed.
-    domainFilters = [var.domain_name]
-    extraArgs     = ["--zone-id-filter=${var.hosted_zone_id}"]
-
-    # sync (rather than upsert-only) lets records be removed when the Ingress
-    # is deleted. Safe here because the TXT registry below means ExternalDNS
-    # only ever touches records it created and marked as its own -- which is
-    # what makes it acceptable to point at a shared zone.
-    policy     = "sync"
-    txtOwnerId = module.eks.cluster_name
-    registry   = "txt"
-
-    sources = ["ingress", "service"]
-
-    resources = {
-      requests = { cpu = "20m", memory = "64Mi" }
-      limits   = { memory = "128Mi" }
-    }
-  })]
-
-  depends_on = [module.external_dns_pod_identity, module.eks]
-}
+# The ExternalDNS Helm release lives in cluster-addons/ for the same reason as
+# the load balancer controller: planning it requires reaching the cluster API.

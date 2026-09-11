@@ -115,3 +115,9 @@ output "github_actions_apply_role_arn" {
   description = "Role assumed by apply jobs running in a protected GitHub Environment."
   value       = try(module.gha_apply_role[0].role_arn, "")
 }
+
+output "cluster_certificate_authority_data" {
+  description = "Cluster CA, consumed by the cluster-addons root module."
+  value       = module.eks.cluster_certificate_authority_data
+  sensitive   = true
+}

@@ -13,7 +13,7 @@ TFVARS := environments/$(ENV).tfvars
 BACKEND := environments/$(ENV).s3.tfbackend
 
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig tunnel image deploy deploy-tls url
+.PHONY: help bootstrap init plan apply destroy fmt validate check clean kubeconfig tunnel image deploy deploy-tls url addons-init addons-plan addons-apply
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "};{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -42,6 +42,16 @@ validate: ## Validate configuration without touching the backend
 check: ## Non-mutating checks, the same set CI runs
 	$(TF) fmt -recursive -check -diff .
 	$(MAKE) validate
+
+addons-init: ## Init the cluster-addons root for $(ENV)
+	cd cluster-addons && $(TF) init -reconfigure \
+	  -backend-config=../$(BACKEND) -backend-config="key=$(ENV)/cluster-addons.tfstate"
+
+addons-plan: ## Plan cluster software (needs cluster API reach -- see `make tunnel`)
+	cd cluster-addons && $(TF) plan -var-file=../environments/$(ENV).addons.tfvars
+
+addons-apply: ## Apply cluster software
+	cd cluster-addons && $(TF) apply -var-file=../environments/$(ENV).addons.tfvars
 
 kubeconfig: ## Point kubectl at the $(ENV) cluster
 	aws eks update-kubeconfig --name $$($(TF) output -raw cluster_name) \
