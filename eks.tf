@@ -69,35 +69,28 @@ module "eks" {
     }
   }
 
-  # A fallback for exactly one case: nobody listed themselves.
+  # A fallback for exactly one case: an empty list.
   #
-  # This flag makes the module grant cluster-admin to whoever runs the apply.
-  # That is useful when cluster_admin_role_arns is empty -- a fresh account is
-  # never left with a cluster nobody can reach -- and actively harmful once the
-  # list is populated, in two different ways:
+  # This flag grants cluster-admin to whoever runs the apply, which is the only
+  # thing standing between a fresh account and a cluster nobody can reach. It is
+  # also the only identity-DEPENDENT input in this module block, and identity is
+  # not stable here: the plan job assumes the read-only plan role and the apply
+  # job assumes the apply role, on purpose. So while this flag is on, plan and
+  # apply compute different access entries and the plan gate stops telling the
+  # truth about what apply will do.
   #
-  #   - list the caller's own role and the module adds a SECOND access entry for
-  #     the same principal, which EKS rejects with ResourceInUseException, after
-  #     the cluster already exists
-  #   - leave the caller out and the grant becomes identity-dependent: CI plans
-  #     as one role and applies as another, so every plan proposes replacing the
-  #     entry, and a local apply quietly moves cluster-admin away from CI -- which
-  #     surfaces much later as app-deploy failing to kubectl
+  # Turning it off whenever anyone is listed -- the condition below -- is
+  # therefore correct, and it was correct before. The failure it produced was
+  # operational: the list has to include EVERY principal that needs the cluster,
+  # and CI's apply role is one of them. app-deploy.yml runs kubectl as that role.
+  # Listing only humans revokes CI, and the first symptom is an app deploy
+  # failing long after the change that caused it.
   #
-  # `length(...) == 0` got this backwards: it turned the fallback OFF the moment
-  # anyone was listed, so naming the first human revoked CI. The condition that
-  # actually holds is "am I already covered by the list":
-  #
-  #   caller in the list  -> off, the list is authoritative and complete
-  #   caller not listed   -> on, so the apply cannot lock itself out
-  #
-  # Put EVERY principal that needs the cluster in the list, CI's apply role
-  # included. Then both CI and a laptop compute the same set of access entries
-  # and the grant stops depending on who is looking at it.
-  enable_cluster_creator_admin_permissions = !contains(
-    var.cluster_admin_role_arns,
-    data.aws_iam_session_context.current.issuer_arn,
-  )
+  # The empty-list branch also cannot produce a duplicate entry, since nothing is
+  # listed to collide with. Populated, the module adds no caller entry at all --
+  # which is what makes "list the role you are applying with" safe rather than a
+  # ResourceInUseException after the cluster already exists.
+  enable_cluster_creator_admin_permissions = length(var.cluster_admin_role_arns) == 0
 
   # --- Control plane logging -------------------------------------------------
   enabled_log_types                      = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
