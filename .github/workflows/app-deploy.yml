@@ -13,7 +13,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: app-${{ github.ref }}
+  # Deliberately the SAME group as terraform-apply so the two serialize. See
+  # that file for why. Note this cannot be solved with `workflow_run`: GitHub
+  # only fires that event for workflow files present on the DEFAULT branch, and
+  # this repository's default branch does not carry them.
+  group: deploy-${{ github.ref_name == 'main' && 'prod' || 'dev' }}
   cancel-in-progress: false
 
 permissions:
@@ -26,8 +30,58 @@ env:
   TF_ENV_DEFAULT: dev
 
 jobs:
+  # Queueing alone is not enough. The concurrency group prevents the two
+  # workflows overlapping, but says nothing about whether the infrastructure
+  # actually came out healthy -- a terraform-apply can finish, or be cancelled,
+  # and still leave no usable cluster. Assert it, and fail with a sentence that
+  # names the cause instead of a kubectl timeout forty lines into a later job.
+  preflight:
+    name: infrastructure ready
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-preflight-${{ github.run_id }}
+
+      - name: Cluster exists and is ACTIVE
+        run: |
+          set -euo pipefail
+          STATUS="$(aws eks describe-cluster --name "$CLUSTER_NAME" \
+            --query cluster.status --output text 2>/dev/null || echo ABSENT)"
+          if [ "$STATUS" = "ABSENT" ]; then
+            echo "::error::Cluster $CLUSTER_NAME does not exist. Run the terraform-apply workflow first, or 'make up ENV=dev' locally. Nothing was deployed."
+            exit 1
+          fi
+          for i in $(seq 1 40); do
+            [ "$STATUS" = "ACTIVE" ] && break
+            echo "cluster is $STATUS, waiting..."
+            sleep 15
+            STATUS="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text)"
+          done
+          [ "$STATUS" = "ACTIVE" ] || { echo "::error::Cluster $CLUSTER_NAME is $STATUS, not ACTIVE"; exit 1; }
+          echo "cluster $CLUSTER_NAME is ACTIVE"
+
+      - name: Load balancer controller is installed
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null
+          if ! kubectl -n kube-system get deploy aws-load-balancer-controller >/dev/null 2>&1; then
+            echo "::error::The AWS Load Balancer Controller is not installed, so the Ingress in this deploy would never get an ALB. Apply the cluster-addons root first: make addons-apply ENV=dev"
+            exit 1
+          fi
+          kubectl -n kube-system rollout status deploy/aws-load-balancer-controller --timeout=300s
+
   scan:
     name: scan source
+    needs: preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

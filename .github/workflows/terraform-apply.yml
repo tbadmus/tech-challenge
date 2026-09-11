@@ -26,9 +26,15 @@ on:
         options: [dev, prod]
 
 concurrency:
-  # Never two applies against one state file at once. Terraform's own lock
-  # would reject the second, but failing here is cheaper than failing there.
-  group: apply-${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+  # Shared with app-build-deploy ON PURPOSE. The two workflows trigger on the
+  # same push and used to run in PARALLEL, so the app deploy raced the
+  # infrastructure that has to exist first -- on a rebuild it tried to reach a
+  # cluster that was still being created and failed every time.
+  #
+  # A single group name across both workflows makes GitHub queue them instead.
+  # cancel-in-progress stays false: killing a half-finished apply leaves partial
+  # infrastructure and an orphaned state lock, which is worse than waiting.
+  group: deploy-${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
   cancel-in-progress: false
 
 permissions:
