@@ -54,6 +54,26 @@ defaulting to **false**.
   plaintext. TLS terminates at the load balancer; traffic from ALB to pod stays
   inside the VPC.
 
+## Superseded — registration removed entirely
+
+**Status of the amendment below: superseded.** Making the stack deployable into
+any AWS account removed domain registration from the project altogether.
+`domain.tf`, the registration variables, the `us-east-1` provider alias that
+existed only for the Route53 Domains API, and
+`environments/dev.domain.tfvars.example` are all gone.
+
+The stack now expects a domain that **already exists** and is publicly
+resolvable, with a hosted zone in the target account. The zone is resolved by
+*name* rather than by id, because zone ids differ in every account, and
+`enable_dns` defaults to false so the stack deploys into a bare account with no
+DNS prerequisites at all.
+
+The reasoning in the amendment is kept because the failure modes it documents
+are still real and still worth knowing — the registrar creating a second hosted
+zone, `glue_ips` needing to be null rather than `[]`, and a failed apply
+tainting a resource that cannot be recreated. They are simply no longer this
+repository's problem.
+
 ## Amendment — registration is in the project
 
 `aws_route53domains_domain` registers a domain, so the registration itself is

@@ -83,9 +83,9 @@ skip-check:
 
   # --- Accepted debt, NOT a false positive --------------------------------
   # CKV_AWS_274 AdministratorAccess on the CI apply role. Checkov is right and
-  # this is a real compromise, documented in github-oidc.tf rather than hidden:
-  # a least-privilege policy for a stack that creates VPCs, EKS clusters, IAM
-  # roles, ACM certificates and Route53 records would be enormous and brittle.
+  # this is a real compromise, documented in bootstrap/github-oidc.tf rather than
+  # hidden: a least-privilege policy for a stack that creates VPCs, EKS clusters,
+  # IAM roles, ACM certificates and Route53 records would be enormous and brittle.
   # Mitigated by an explicit Deny -- which beats any Allow -- on the state
   # bucket, route53domains:*, organizations, account, and iam:CreateAccessKey.
   # The production fix is a permissions boundary on everything the role creates.

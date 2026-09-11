@@ -4,7 +4,11 @@ Superseded by `.github/workflows/` per ADR-0003. Kept because Jenkins is still
 what many engineers meet in the field, and because reading the two side by side
 is the clearest way to see what changed and why.
 
-**This file is not wired to anything.** It is reading material.
+**Nothing here is wired to anything.** It is reading material. `sonar-project.properties`
+sits alongside the Jenkinsfile for the same reason: it configured a scanner that
+only the Jenkins pipeline ever invoked, and it pointed at `sonar.sources=app` --
+a ten-line JavaScript file -- while the Terraform, where the real exposure was,
+went unexamined.
 
 ## What was wrong with it
 

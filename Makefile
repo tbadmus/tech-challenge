@@ -197,6 +197,23 @@ deploy: ## Deploy the application by digest
 	kubectl apply -k "$$TMP/k8s"; rm -rf "$$TMP"; \
 	kubectl -n demo rollout status deploy/hello-world --timeout=300s
 
+# Same temp-render approach as `deploy`, plus the certificate ARN and hostname
+# injected from Terraform outputs -- so the tracked manifests carry no account
+# id and no environment-specific hostname.
+deploy-tls: ## Deploy the application over HTTPS (requires enable_dns and a resolvable domain)
+	@IMG=$$(cat .backend/$(ENV).image 2>/dev/null) || { echo "run 'make image' first"; exit 1; }; \
+	CERT=$$($(TF) output -raw app_certificate_arn 2>/dev/null); \
+	FQDN=$$($(TF) output -raw app_fqdn 2>/dev/null); \
+	if [ -z "$$CERT" ] || [ -z "$$FQDN" ]; then \
+	  echo "enable_dns is off, or the certificate is not issued yet -- see dns.tf"; exit 1; fi; \
+	TMP=$$(mktemp -d); cp -R app/k8s app/k8s-tls "$$TMP"/; \
+	(cd "$$TMP/k8s" && kustomize edit set image "hello-world=$$IMG" 2>/dev/null \
+	   || sed -i.bak "s|newName:.*|newName: $${IMG%@*}|; s|digest:.*|digest: $${IMG#*@}|" kustomization.yaml); \
+	sed -i.bak -e "s|CERT_ARN_PLACEHOLDER|$$CERT|" -e "s|FQDN_PLACEHOLDER|$$FQDN|" "$$TMP/k8s-tls/ingress-tls.yaml"; \
+	kubectl apply -k "$$TMP/k8s-tls"; rm -rf "$$TMP"; \
+	kubectl -n demo rollout status deploy/hello-world --timeout=300s; \
+	echo "  https://$$FQDN"
+
 url: ## Print the public URL of the application
 	@H=$$(kubectl -n demo get ingress hello-world -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null); \
 	F=$$($(TF) output -raw app_fqdn 2>/dev/null); \

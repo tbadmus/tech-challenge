@@ -39,16 +39,18 @@ Requires network access to the cluster API — so either an allowlisted IP, or
 the SSM tunnel:
 
 ```bash
-make tunnel ENV=dev          # in another shell, if your IP is not allowlisted
-cd cluster-addons
-terraform init -backend-config=../environments/dev.s3.tfbackend -backend-config="key=dev/cluster-addons.tfstate"
-terraform apply -var-file=../environments/dev.tfvars
+make tunnel ENV=dev            # in another shell, if your IP is not allowlisted
+make addons-init  ENV=dev
+make addons-apply ENV=dev
 ```
 
-Or from the repo root: `make addons-plan ENV=dev` / `make addons-apply ENV=dev`.
+`make` derives the state bucket from the AWS account and generates the backend
+config at init time, so there is nothing to edit and no committed backend file.
 
 ## Where the inputs come from
 
-Cluster coordinates and the Pod Identity role ARNs are read from the
-infrastructure root's state via `terraform_remote_state`. That is a read-only
-dependency in one direction: infrastructure knows nothing about addons.
+Cluster coordinates, the region, the Pod Identity role ARNs, and the DNS
+settings are all read from the infrastructure root's state via
+`terraform_remote_state`. That is a read-only dependency in one direction:
+infrastructure knows nothing about addons, and nothing is restated in a second
+tfvars file where the two could drift apart.
