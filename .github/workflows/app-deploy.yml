@@ -9,7 +9,10 @@ name: app-build-deploy
 on:
   push:
     branches: [dev, main]
-    paths: ['app/**', '.github/workflows/app-deploy.yml']
+    # Only the application. Editing this workflow cannot change what is
+    # deployed, so it should not trigger a deployment -- that is how a
+    # CI-only merge ended up deploying into a cluster that no longer existed.
+    paths: ['app/**']
   workflow_dispatch:
 
 concurrency:
