@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+  labels:
+    app.kubernetes.io/name: hello-world
+spec:
+  # ClusterIP, not LoadBalancer. The ALB created by the Ingress targets pod IPs
+  # directly, so this Service exists only to define the target set -- no second
+  # cloud load balancer is involved.
+  #
+  # The old Service was type: LoadBalancer with the legacy
+  # aws-load-balancer-internal annotation, which produced an internal Classic
+  # Load Balancer nothing outside the VPC could reach.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hello-world
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

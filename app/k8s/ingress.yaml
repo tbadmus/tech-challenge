@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello-world
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # The pivotal setting. target-type: ip registers pod IPs as ALB targets, so
+    # the ALB lives in a public subnet while the pods stay private. With the
+    # default target-type: instance the ALB would register nodes on a NodePort
+    # and every request would take an extra hop through kube-proxy.
+    alb.ingress.kubernetes.io/target-type: ip
+
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+
+    # Health checks hit the app's own readiness endpoint, so the ALB and
+    # Kubernetes agree on what "ready" means.
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+
+    # Let in-flight requests finish when a pod is removed from the target group.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+
+    alb.ingress.kubernetes.io/tags: Project=tech-challenge,ManagedBy=kubernetes
+spec:
+  # No subnet IDs appear here. The controller discovers them from the
+  # kubernetes.io/role/elb tags that network.tf applies.
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hello-world
+                port:
+                  number: 80

@@ -1,0 +1,63 @@
+# ---- Terraform ----------------------------------------------------------
+**/.terraform/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.json
+crash.log
+crash.*.log
+
+# Local variable overrides. Environment config lives in environments/*.tfvars
+# and IS tracked -- it contains no secrets, only shape.
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored. Commit it --
+# it is what makes provider resolution reproducible across machines and CI.
+
+# ---- Credentials and keys ------------------------------------------------
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+id_rsa*
+techkey
+techkey.pub
+kubeconfig
+kubeconfig-*
+.aws/
+*.retry
+
+# ---- Packer --------------------------------------------------------------
+packer_cache/
+*.box
+manifest.json
+
+# ---- Node ----------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# ---- OS / editor ---------------------------------------------------------
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- Claude Code ---------------------------------------------------------
+CLAUDE.local.md
+.claude/settings.local.json
+CLAUDE.md

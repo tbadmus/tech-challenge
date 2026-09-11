@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# TLS overlay. Adds an HTTPS listener, an HTTP -> HTTPS redirect, and the public
+# hostname that ExternalDNS turns into a Route53 record.
+#
+#   CERT_ARN=$(terraform output -raw app_certificate_arn) \
+#   FQDN=$(terraform output -raw app_fqdn) \
+#   make deploy-tls
+#
+# Requires enable_dns = true and a publicly resolvable domain -- see dns.tf.
+
+resources:
+  - ../k8s
+
+patches:
+  - path: ingress-tls.yaml
+    target:
+      kind: Ingress
+      name: hello-world

@@ -1,0 +1,89 @@
+name: terraform-apply
+
+# dev applies on merge to dev. main triggers a prod apply that BLOCKS on a
+# required reviewer before it can touch anything.
+#
+# The gate is enforced by the GitHub Environment, not by this file:
+#   prod -> required_reviewers + branch policy (main only)
+#   dev  -> branch policy (dev only)
+#
+# Two independent things have to line up for a prod apply to run. GitHub will
+# not start the job until a reviewer approves it, and the AWS trust policy only
+# accepts `repo:<repo>:environment:prod` -- so a job that does not declare that
+# environment cannot assume the apply role at all, whatever branch it is on.
+# Neither control depends on the other being correct.
+on:
+  push:
+    branches: [dev, main]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to apply
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+concurrency:
+  # Never two applies against one state file at once. Terraform's own lock
+  # would reject the second, but failing here is cheaper than failing there.
+  group: apply-${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.16.2"
+  AWS_REGION: us-east-1
+  # The API endpoint allowlist is deliberately absent from environments/*.tfvars
+  # because this repository is public -- publishing the one IP permitted to
+  # reach the cluster API would be a targeting aid. It arrives as a secret.
+  # TF_VAR_ env vars have the LOWEST precedence of any variable source, which
+  # is exactly why the key must stay unset in the tfvars file.
+  TF_VAR_cluster_endpoint_public_access_cidrs: ${{ secrets.TF_VAR_cluster_endpoint_public_access_cidrs }}
+
+jobs:
+  apply:
+    name: apply
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}"
+          echo "name=$ENV" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-apply-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init -reconfigure -backend-config=environments/${{ steps.env.outputs.name }}.s3.tfbackend
+
+      - name: terraform plan
+        run: |
+          terraform plan -no-color -lock-timeout=5m \
+            -var-file=environments/${{ steps.env.outputs.name }}.tfvars -out=tfplan
+
+      - name: terraform apply
+        # Applies the plan file, not a fresh plan. -auto-approve on a re-planned
+        # run applies whatever the world looks like at that moment, which is not
+        # necessarily what the approver saw.
+        run: terraform apply -no-color -lock-timeout=5m tfplan
+
+      - name: Outputs
+        run: terraform output -no-color

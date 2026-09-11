@@ -1,0 +1,134 @@
+name: terraform-plan
+
+# Pull requests only. Every check here is blocking -- the Jenkinsfile this
+# replaces had three security gates and not one of them could fail a build.
+on:
+  pull_request:
+    branches: [dev, main]
+    paths-ignore: ['docs/**', '**/*.md']
+
+concurrency:
+  group: plan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write        # required to mint the OIDC token
+  pull-requests: write   # to post the plan as a comment
+
+env:
+  TF_VERSION: "1.16.2"
+  AWS_REGION: us-east-1
+  TF_ENV: dev
+  # The API endpoint allowlist is deliberately absent from environments/*.tfvars
+  # because this repository is public -- publishing the one IP permitted to
+  # reach the cluster API would be a targeting aid. It arrives as a secret.
+  # TF_VAR_ env vars have the LOWEST precedence of any variable source, which
+  # is exactly why the key must stay unset in the tfvars file.
+  TF_VAR_cluster_endpoint_public_access_cidrs: ${{ secrets.TF_VAR_cluster_endpoint_public_access_cidrs }}
+
+jobs:
+  validate:
+    name: fmt / validate / lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -recursive -check -diff
+
+      - name: terraform init (no backend)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --recursive --format compact
+
+      - name: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          # Blocking. soft_fail would reproduce the Jenkins problem: a green
+          # tick that means nothing.
+          soft_fail: false
+          config_file: .checkov.yml
+
+  plan:
+    name: plan (${{ github.base_ref }})
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # No access key, no secret. A short-lived token is exchanged for this
+          # role, and the role's trust policy pins repo + pull_request.
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init -reconfigure -backend-config=environments/${{ env.TF_ENV }}.s3.tfbackend
+
+      - name: terraform plan
+        id: plan
+        continue-on-error: true
+        run: |
+          terraform plan -no-color -lock-timeout=5m \
+            -var-file=environments/${{ env.TF_ENV }}.tfvars \
+            -out=tfplan 2>&1 | tee plan.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('plan.txt', 'utf8');
+            // GitHub caps a comment at 65536 characters.
+            const LIMIT = 60000;
+            const truncated = plan.length > LIMIT;
+            if (truncated) plan = plan.slice(-LIMIT);
+            const body = [
+              `### Terraform plan — \`${{ env.TF_ENV }}\``,
+              truncated ? '> Output truncated; earlier lines are in the job log.' : '',
+              '```terraform',
+              plan,
+              '```',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.startsWith('### Terraform plan'));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
