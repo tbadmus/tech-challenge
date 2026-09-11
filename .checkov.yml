@@ -59,6 +59,20 @@ skip-check:
   # key whose deletion would make every image unpullable.
   - CKV_AWS_136
 
+  # --- Container Insights log groups --------------------------------------
+  # CKV_AWS_338 "retain logs for at least 1 year". A compliance default, and the
+  # right answer in a regulated environment. Wrong here: this is a demo cluster
+  # torn down between sessions, and a year of container logs is a standing cost
+  # for data nobody will read. Retention is set EXPLICITLY to 14 days in
+  # observability.tf, which is the point -- left alone the agent creates these
+  # groups with "Never expire", which is the failure this check exists to catch.
+  - CKV_AWS_338
+  # CKV_AWS_158 "log group encrypted by KMS". CloudWatch Logs are already
+  # encrypted at rest with an AWS-managed key. A CMK would add cost, a key
+  # policy the agent must be granted, and a key whose deletion makes the logs
+  # permanently unreadable. Same trade rejected for ECR and the state bucket.
+  - CKV_AWS_158
+
   # --- Module sourcing ----------------------------------------------------
   # CKV_TF_1 "module source should use a commit hash". That rule targets git
   # sources. These are registry modules with version constraints, which is the
