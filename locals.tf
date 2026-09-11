@@ -13,6 +13,5 @@ locals {
     var.tags,
   )
 
-  cluster_name    = "${local.name}-cluster"
-  cluster_version = var.cluster_version
+  cluster_name = "${local.name}-cluster"
 }
