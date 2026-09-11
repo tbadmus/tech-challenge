@@ -281,3 +281,20 @@ variable "container_log_retention_days" {
     error_message = "Must be a retention value CloudWatch Logs accepts."
   }
 }
+
+variable "kms_key_deletion_window_in_days" {
+  description = <<-EOT
+    Waiting period before the cluster secret-encryption key is actually deleted
+    (7-30 days). This window is the only undo for a key that still encrypts live
+    Secrets, so prod keeps the 30-day default. A sandbox that is torn down and
+    rebuilt daily accrues one orphaned key per cycle at ~$1/month each, which is
+    why dev.tfvars sets 7.
+  EOT
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.kms_key_deletion_window_in_days >= 7 && var.kms_key_deletion_window_in_days <= 30
+    error_message = "KMS deletion window must be between 7 and 30 days."
+  }
+}

@@ -44,6 +44,11 @@ node_desired_size  = 2
 
 ecr_repository_name = "hello-world"
 
+# Shortest window AWS allows. A scheduled-for-deletion key still bills, and this
+# environment is rebuilt often enough for 30 days of them to add up. See the
+# variable description for why prod should not copy this.
+kms_key_deletion_window_in_days = 7
+
 # ---------------------------------------------------------------------------
 # Public DNS and TLS — optional, off by default so the stack deploys into any
 # account with no prerequisites.

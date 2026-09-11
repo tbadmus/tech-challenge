@@ -17,3 +17,4 @@ record that supersedes it rather than editing history.
 | [0005](0005-managed-node-groups.md) | Managed node groups now, Karpenter as a later phase | Accepted |
 | [0006](0006-s3-native-state-locking.md) | S3 conditional-write locking instead of a DynamoDB table | Accepted |
 | [0007](0007-dns-and-tls.md) | ExternalDNS + ACM for public DNS and TLS, gated on a resolvable domain | Accepted |
+| [0008](0008-generated-kms-alias.md) | Own the cluster encryption key so its alias can carry a generated suffix | Accepted |
