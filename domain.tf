@@ -53,7 +53,14 @@ resource "aws_route53domains_domain" "this" {
   # .name_server[0].glue_ips: was cty.SetValEmpty(cty.String), but now null".
   # The registration still succeeds and lands in state; the apply just reports
   # four errors it should not. Provider 6.64.0.
-  name_server = [for ns in var.domain_name_servers : { name = ns, glue_ips = null }]
+  #
+  # sort() matters: name_server is an ORDERED list, and the provider reads the
+  # nameservers back lexicographically. Passing them in delegation-set order
+  # therefore diffs on every single plan and fires a pointless
+  # UpdateDomainNameservers call on every apply. Sorting both sides makes the
+  # resource converge, while a genuinely different set of nameservers still
+  # shows up as drift -- which ignore_changes would have hidden.
+  name_server = [for ns in sort(var.domain_name_servers) : { name = ns, glue_ips = null }]
 
   # WHOIS privacy on every contact. Without these, the address and phone number
   # below are published.

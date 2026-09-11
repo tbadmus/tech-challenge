@@ -105,3 +105,13 @@ output "app_certificate_arn" {
   description = "ACM certificate ARN for the app hostname."
   value       = try(aws_acm_certificate_validation.app[0].certificate_arn, "")
 }
+
+output "github_actions_plan_role_arn" {
+  description = "Role assumed by pull-request plan jobs. Read-only plus state locking."
+  value       = try(module.gha_plan_role[0].role_arn, "")
+}
+
+output "github_actions_apply_role_arn" {
+  description = "Role assumed by apply jobs running in a protected GitHub Environment."
+  value       = try(module.gha_apply_role[0].role_arn, "")
+}

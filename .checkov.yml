@@ -1,0 +1,24 @@
+# Checkov runs blocking in CI. Every skip below is a decision with a reason --
+# an unexplained skip list is how a security gate quietly stops meaning anything.
+framework:
+  - terraform
+
+skip-check:
+  # Access logging on the state bucket. It would need a second bucket that
+  # itself needs logging, and CloudTrail data events already cover S3 access.
+  - CKV_AWS_18
+  # Cross-region replication of Terraform state. Not warranted for a sandbox.
+  - CKV_AWS_144
+  # KMS CMK instead of SSE-S3 on the state bucket. SSE-S3 is sufficient here
+  # and avoids a key whose deletion would render every state file unreadable.
+  - CKV_AWS_145
+  # EKS public endpoint. Deliberate and constrained: ADR-0004 enables the
+  # public endpoint only with a CIDR allowlist, and a variable validation
+  # rejects 0.0.0.0/0 outright.
+  - CKV_AWS_39
+  # VPC flow logs are enabled via the community module's own variables, which
+  # checkov does not trace through.
+  - CKV2_AWS_11
+
+quiet: true
+compact: true

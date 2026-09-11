@@ -339,3 +339,36 @@ variable "domain_contact" {
     error_message = "phone_number must be in the registrar's format: a plus sign, country code, a dot, then the number. For example +1.5551234567."
   }
 }
+
+# ---------------------------------------------------------------------------
+# CI/CD — GitHub Actions OIDC
+# ---------------------------------------------------------------------------
+
+variable "enable_github_oidc" {
+  description = "Create the IAM roles GitHub Actions assumes via OIDC."
+  type        = bool
+  default     = true
+}
+
+variable "create_github_oidc_provider" {
+  description = "Create the OIDC provider itself. Only one per AWS account is allowed, so set false if another stack already created it."
+  type        = bool
+  default     = true
+}
+
+variable "github_repository" {
+  description = "owner/name of the repository allowed to assume the CI roles. This value IS the security boundary -- never widen it to a wildcard."
+  type        = string
+  default     = "tbadmus/tech-challenge"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be exactly owner/name, with no wildcards."
+  }
+}
+
+variable "github_environments" {
+  description = "GitHub Environment names permitted to assume the apply role. Environments carry the approval rules, which is why the trust policy binds to them rather than to branches."
+  type        = list(string)
+  default     = ["dev", "prod"]
+}

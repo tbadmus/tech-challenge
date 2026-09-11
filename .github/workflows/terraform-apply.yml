@@ -1,0 +1,85 @@
+name: terraform-apply
+
+# dev applies automatically on merge. prod does NOT -- it is workflow_dispatch
+# only, so a human has to deliberately trigger it.
+#
+# The intended gate was a required-reviewers rule on the prod GitHub
+# Environment. That is unavailable here: environment protection rules need
+# GitHub Pro/Team/Enterprise for a PRIVATE repository, and this repo is private
+# on the free plan (the API returns HTTP 422, "Please ensure the billing plan
+# supports the required reviewers protection rule"). Making the repo public, or
+# upgrading the plan, restores it -- at which point `main` can be added back to
+# the push trigger and the approval becomes enforced rather than conventional.
+#
+# What still holds without it: the AWS trust policy binds to
+# `environment:prod`, so a job that does not declare that environment cannot
+# assume the apply role at all, whatever branch it runs from.
+on:
+  push:
+    branches: [dev]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to apply
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+concurrency:
+  # Never two applies against one state file at once. Terraform's own lock
+  # would reject the second, but failing here is cheaper than failing there.
+  group: apply-${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.16.2"
+  AWS_REGION: us-east-1
+
+jobs:
+  apply:
+    name: apply
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}"
+          echo "name=$ENV" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-apply-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init -reconfigure -backend-config=environments/${{ steps.env.outputs.name }}.s3.tfbackend
+
+      - name: terraform plan
+        run: |
+          terraform plan -no-color -lock-timeout=5m \
+            -var-file=environments/${{ steps.env.outputs.name }}.tfvars -out=tfplan
+
+      - name: terraform apply
+        # Applies the plan file, not a fresh plan. -auto-approve on a re-planned
+        # run applies whatever the world looks like at that moment, which is not
+        # necessarily what the approver saw.
+        run: terraform apply -no-color -lock-timeout=5m tfplan
+
+      - name: Outputs
+        run: terraform output -no-color
