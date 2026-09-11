@@ -4,12 +4,46 @@ const express = require('express');
 const os = require('os');
 
 const app = express();
+
 const port = Number(process.env.PORT) || 8080;
 
 // Shown in the response so a browser screenshot proves which pod answered --
 // useful for demonstrating that the ALB is load balancing across replicas.
 const pod = process.env.POD_NAME || os.hostname();
 const version = process.env.APP_VERSION || 'dev';
+
+// Structured request logging, one JSON object per line.
+//
+// Two reasons it is JSON rather than a formatted string. CloudWatch Logs
+// Insights parses JSON fields automatically, so `fields @timestamp, path,
+// status, duration_ms | filter status >= 400` works with no custom parser. And
+// a log line that is already structured survives being moved to a different
+// backend later.
+//
+// Without this the app logged only on startup and shutdown -- which made the
+// logging pipeline impossible to demonstrate, because a healthy pod emitted
+// nothing at all.
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    console.log(JSON.stringify({
+      level: res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+      msg: 'request',
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration_ms: Math.round(durationMs * 100) / 100,
+      // Behind an ALB the socket address is the load balancer, so the real
+      // client is the first entry of X-Forwarded-For.
+      client: (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || undefined,
+      user_agent: req.headers['user-agent'],
+      pod,
+      version,
+    }));
+  });
+  next();
+});
 
 app.get('/', (req, res) => {
   res.type('html').send(`<!doctype html>

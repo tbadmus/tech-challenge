@@ -89,6 +89,23 @@ module "eks" {
       })
     }
 
+    # Fluent Bit + Container Insights. See observability.tf for the log groups
+    # and IAM, and optional/efk/ for the stack this replaces.
+    amazon-cloudwatch-observability = var.enable_container_insights ? {
+      pod_identity_association = [{
+        role_arn        = module.cloudwatch_observability_pod_identity[0].iam_role_arn
+        service_account = "cloudwatch-agent"
+      }]
+      configuration_values = jsonencode({
+        containerLogs     = { enabled = true }
+        containerInsights = { enabled = true }
+        # Application Signals is APM-style tracing, defaults to ENABLED, and is
+        # billed per trace and per observed service. Not what this project set
+        # out to demonstrate, so it is off deliberately rather than by omission.
+        applicationSignals = { enabled = false }
+      })
+    } : null
+
     aws-ebs-csi-driver = {
       pod_identity_association = [{
         role_arn        = module.ebs_csi_pod_identity.iam_role_arn
