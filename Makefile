@@ -24,6 +24,16 @@ PROJECT  = $(shell awk -F'"' '/^[[:space:]]*project[[:space:]]*=/{print $$2; exi
 PROJECT_D = $(if $(PROJECT),$(PROJECT),tech-challenge)
 BUCKET   = $(PROJECT_D)-tfstate-$(ACCOUNT)
 
+# Derived, not read from `terraform output cluster_name`. During a teardown the
+# output disappears the moment the cluster leaves state, and the teardown
+# targets need the name AFTER that point.
+CLUSTER  = $(PROJECT_D)-$(ENV)-cluster
+
+# Everything the load balancer controller creates carries this tag. It is what
+# makes the teardown targets safe to point at a VPC: they never touch a load
+# balancer somebody created by hand alongside the cluster.
+LB_TAG   = elbv2.k8s.aws/cluster
+
 # owner/name from the origin remote, so a fork never creates IAM roles that
 # trust the upstream repository.
 # NOTE: '#' starts a comment in a Makefile and '@' appears in the SSH remote,
@@ -35,6 +45,7 @@ TFVAR_ARGS = -var-file=$(TFVARS)
 .DEFAULT_GOAL := help
 .PHONY: help preflight bootstrap ci-secrets backend init plan apply up down destroy fmt validate check clean \
         addons-init addons-plan addons-apply addons-destroy \
+        lb-orphans wait-lb-gone lb-orphans-delete \
         image deploy deploy-tls url kubeconfig tunnel wait-cluster wait-nodes wait-controller
 
 help: ## Show available targets
@@ -123,7 +134,119 @@ apply: ## Apply the saved $(ENV) plan (run `make plan` first)
 	$(TF) apply -input=false $(ENV).tfplan
 	@rm -f $(ENV).tfplan
 
-destroy: ## Destroy the infrastructure root only
+# ---------------------------------------------------------------------------
+# Teardown
+# ---------------------------------------------------------------------------
+# The load balancer controller creates an ALB, a target group and two security
+# groups in response to an Ingress. Terraform never sees any of them, so there
+# is no edge in its graph from those resources to the VPC: `terraform destroy`
+# deletes the cluster quite happily and then fails on the subnets, which still
+# hold the ALB's network interfaces.
+#
+# Retrying does not help, and this is the part that makes the ordering matter
+# rather than merely being tidy. The controller that would have removed the ALB
+# went away with the cluster, so by the time the error appears nothing is left
+# that knows how to clean up -- the ALB is orphaned and only the CLI can clear
+# it. Hit for real on 2026-09-12 by running `make destroy` directly.
+
+# Resolved from the Name tag, NOT from `terraform output vpc_id`. A partial
+# destroy strips the outputs out of state -- verified: after the failed teardown
+# on 2026-09-12, `terraform output` reported "No outputs found" while the VPC
+# itself was still very much there. An output is unavailable in precisely the
+# situation these targets exist to handle.
+VPC_FILTER = "Name=tag:Name,Values=$(PROJECT_D)-$(ENV)-vpc"
+
+lb-orphans: ## List load balancers the in-cluster controller owns (Terraform cannot see them)
+	@VPC=$$(aws ec2 describe-vpcs --region $(REGION) --filters $(VPC_FILTER) \
+	         --query 'Vpcs[0].VpcId' --output text 2>/dev/null); \
+	[ -n "$$VPC" ] && [ "$$VPC" != "None" ] || exit 0; \
+	for arn in $$(aws elbv2 describe-load-balancers --region $(REGION) \
+	      --query "LoadBalancers[?VpcId=='$$VPC'].LoadBalancerArn" --output text 2>/dev/null); do \
+	  aws elbv2 describe-tags --region $(REGION) --resource-arns "$$arn" \
+	    --query "TagDescriptions[0].Tags[?Key=='$(LB_TAG)'].Value" --output text 2>/dev/null \
+	    | grep -q . && echo "$$arn"; \
+	done; true
+
+wait-lb-gone: ## Block until the controller has released its load balancers
+	@echo "  waiting for the load balancer controller to release its AWS resources"
+	@for i in $$(seq 1 60); do \
+	  N=$$($(MAKE) -s lb-orphans ENV=$(ENV) | grep -c . || true); \
+	  [ "$$N" = "0" ] && { echo "  released"; exit 0; }; \
+	  sleep 10; \
+	done; \
+	echo "  still present after 10 minutes -- see: make lb-orphans ENV=$(ENV)"; exit 1
+
+lb-orphans-delete: ## Delete orphaned controller resources (recovery, only when the cluster is gone)
+	@if aws eks describe-cluster --name $(CLUSTER) --region $(REGION) >/dev/null 2>&1; then \
+	  echo "  The cluster still exists. Delete the Ingress and let the controller do"; \
+	  echo "  it properly -- it also removes the target groups and security groups,"; \
+	  echo "  which deleting the load balancer directly does not:"; \
+	  echo "      make down ENV=$(ENV)"; \
+	  exit 1; \
+	fi
+	@VPC=$$(aws ec2 describe-vpcs --region $(REGION) --filters $(VPC_FILTER) \
+	         --query 'Vpcs[0].VpcId' --output text 2>/dev/null); \
+	[ -n "$$VPC" ] && [ "$$VPC" != "None" ] || { echo "  no VPC found; nothing to clean"; exit 0; }; \
+	FAIL=0; \
+	for arn in $$($(MAKE) -s lb-orphans ENV=$(ENV)); do \
+	  echo "  deleting load balancer $${arn##*:loadbalancer/}"; \
+	  aws elbv2 delete-load-balancer --region $(REGION) --load-balancer-arn "$$arn" || FAIL=1; \
+	  aws elbv2 wait load-balancers-deleted --region $(REGION) --load-balancer-arns "$$arn" || FAIL=1; \
+	done; \
+	for tg in $$(aws elbv2 describe-target-groups --region $(REGION) \
+	      --query "TargetGroups[?VpcId=='$$VPC'].TargetGroupArn" --output text 2>/dev/null); do \
+	  aws elbv2 describe-tags --region $(REGION) --resource-arns "$$tg" \
+	    --query "TagDescriptions[0].Tags[?Key=='$(LB_TAG)'].Value" --output text 2>/dev/null \
+	    | grep -q . || continue; \
+	  echo "  deleting target group $${tg##*:targetgroup/}"; \
+	  OK=0; \
+	  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+	    if aws elbv2 delete-target-group --region $(REGION) --target-group-arn "$$tg" 2>/dev/null; then OK=1; break; fi; \
+	    sleep 10; \
+	  done; \
+	  [ "$$OK" = "1" ] || { echo "    still in use after two minutes"; FAIL=1; }; \
+	done; \
+	for sg in $$(aws ec2 describe-security-groups --region $(REGION) \
+	      --filters "Name=vpc-id,Values=$$VPC" "Name=tag-key,Values=$(LB_TAG)" \
+	      --query 'SecurityGroups[].GroupId' --output text 2>/dev/null); do \
+	  echo "  deleting security group $$sg"; \
+	  OK=0; \
+	  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+	    if aws ec2 delete-security-group --region $(REGION) --group-id "$$sg" 2>/dev/null; then OK=1; break; fi; \
+	    sleep 10; \
+	  done; \
+	  [ "$$OK" = "1" ] || { echo "    still in use after two minutes"; FAIL=1; }; \
+	done; \
+	if [ "$$FAIL" != "0" ]; then \
+	  echo ""; \
+	  echo "  Some resources could not be removed. Deletion here is ASYNCHRONOUS --"; \
+	  echo "  a target group stays in use until its listener is really gone, and a"; \
+	  echo "  security group until its last ENI detaches. Wait a minute and re-run."; \
+	  exit 1; \
+	fi; \
+	echo "  orphaned controller resources removed"
+
+destroy: ## Destroy the infrastructure root only (prefer `make down`)
+	@ORPHANS=$$($(MAKE) -s lb-orphans ENV=$(ENV)); \
+	if [ -n "$$ORPHANS" ]; then \
+	  echo ""; \
+	  echo "  Refusing to destroy. The load balancer controller owns AWS resources"; \
+	  echo "  in this VPC that Terraform cannot see:"; \
+	  echo "$$ORPHANS" | sed 's|^.*:loadbalancer/|    |'; \
+	  echo ""; \
+	  echo "  Destroying now would delete the cluster, then fail on the subnets that"; \
+	  echo "  still hold this load balancer's ENIs -- and the controller that would"; \
+	  echo "  have removed it would be gone, so the failure is not recoverable by"; \
+	  echo "  retrying."; \
+	  echo ""; \
+	  if aws eks describe-cluster --name $(CLUSTER) --region $(REGION) >/dev/null 2>&1; then \
+	    echo "      make down ENV=$(ENV)          # the cluster is up: let the controller clean up"; \
+	  else \
+	    echo "      make lb-orphans-delete ENV=$(ENV)   # the cluster is already gone"; \
+	  fi; \
+	  echo ""; \
+	  exit 1; \
+	fi
 	$(TF) destroy $(TFVAR_ARGS)
 
 # ---------------------------------------------------------------------------
@@ -285,9 +408,18 @@ _confirm:
 # CI identity live there precisely so a routine teardown cannot remove them --
 # CI has to survive in order to rebuild what it just destroyed.
 down: ## Tear everything down, in the order that actually works
-	@echo "==> 1/3 application" && kubectl delete -k app/k8s --ignore-not-found=true || true
-	@echo "==> 2/3 cluster software" && $(MAKE) --no-print-directory addons-destroy ENV=$(ENV) || true
-	@echo "==> 3/3 infrastructure" && $(MAKE) --no-print-directory destroy ENV=$(ENV)
+	@echo "==> 1/4 application"
+	@if aws eks describe-cluster --name $(CLUSTER) --region $(REGION) >/dev/null 2>&1; then \
+	  kubectl delete -k app/k8s --ignore-not-found=true; \
+	else \
+	  echo "  cluster already gone -- skipping"; \
+	fi
+	@echo "==> 2/4 waiting for AWS resources the controller owns"
+	@$(MAKE) --no-print-directory wait-lb-gone ENV=$(ENV)
+	@echo "==> 3/4 cluster software"
+	@$(MAKE) --no-print-directory addons-destroy ENV=$(ENV) || true
+	@echo "==> 4/4 infrastructure"
+	@$(MAKE) --no-print-directory destroy ENV=$(ENV)
 
 # ---------------------------------------------------------------------------
 # Utilities
