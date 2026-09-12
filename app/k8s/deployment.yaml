@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-world
+  labels:
+    app.kubernetes.io/name: hello-world
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello-world
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hello-world
+    spec:
+      # Give in-flight requests time to drain on SIGTERM.
+      terminationGracePeriodSeconds: 30
+
+      # Spread replicas across AZs. With both replicas on one node, a node
+      # replacement is an outage.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: hello-world
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: hello-world
+          # Replaced by kustomize at deploy time. Deliberately not a valid
+          # reference: "hello-world" alone would resolve to docker.io/library/
+          # hello-world and silently deploy the wrong container. The old
+          # manifest used a literal REPO_URL placeholder that the pipeline
+          # rewrote in place with `sed -i`, mutating a tracked file and
+          # silently no-opping on the second run.
+          image: SET-BY-MAKE-DEPLOY/hello-world
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: APP_VERSION
+              value: "v1"
+
+          # The old Deployment had none of these. Without requests the
+          # scheduler cannot place the pod sensibly; without limits one pod can
+          # starve every other pod on the node.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+
+          # Three distinct probes with three distinct jobs. The old manifest had
+          # no probes at all, so a hung process kept receiving traffic forever.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hello-world
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello-world

@@ -1,0 +1,84 @@
+# Copy to terraform.tfvars and fill in:
+#
+#     cp terraform.tfvars.example terraform.tfvars
+#
+# That file is gitignored on purpose. Every value below is account-specific, and
+# two of them are things a PUBLIC repository should not carry: the one IP address
+# permitted to reach the cluster API, and the ARNs of the roles that administer
+# it. Neither is configuration so much as a targeting aid.
+#
+# Terraform auto-loads `terraform.tfvars`. It does NOT load this file, so a
+# half-filled example can never be picked up by accident, and the placeholder
+# values below can never reach a plan.
+#
+# Do NOT move any of these into environments/<env>.tfvars. A -var-file on the
+# command line outranks both terraform.tfvars and TF_VAR_, so a value there
+# overrides what you set here AND what CI passes -- including when it is set to
+# the default. Absence is the only safe state in that file.
+#
+# CI cannot read this file. Mirror anything you set here into the repository
+# secrets and variables listed against each block, or CI will compute a
+# different plan from yours -- and for DNS that means planning to DESTROY the
+# certificate.
+
+# ---------------------------------------------------------------------------
+# Required: who may REACH the Kubernetes API
+# ---------------------------------------------------------------------------
+# Your public egress IP. The cluster's public endpoint permits this list and
+# nothing else; a variable validation rejects 0.0.0.0/0 outright.
+#
+#   curl -s https://checkip.amazonaws.com
+#
+# Leave it out entirely and the public endpoint has no allowlist -- reach the
+# API over SSM instead with `make tunnel ENV=dev`. Expect to revisit this
+# whenever your ISP moves you.
+#
+# CI: secret TF_VAR_cluster_endpoint_public_access_cidrs
+cluster_endpoint_public_access_cidrs = ["203.0.113.10/32"]
+
+# ---------------------------------------------------------------------------
+# Required: who may USE the cluster once it exists
+# ---------------------------------------------------------------------------
+# An AWS account with AdministratorAccess grants ZERO Kubernetes RBAC. Without
+# an entry here, kubectl returns "the server has asked for the client to provide
+# credentials" and the console Resources tab shows "Unauthorized", while every
+# AWS-level check reports a perfectly healthy cluster -- because it is one.
+#
+# Find yours:
+#   aws iam list-roles --query "Roles[?contains(RoleName,'AWSReservedSSO')].Arn"
+#
+# Use the FULL ARN including the path; SSO roles live under
+# /aws-reserved/sso.amazonaws.com/ and an ARN without it matches nothing.
+#
+# Include the CI apply role as well. app-deploy.yml runs kubectl as that role,
+# so a list naming only humans revokes CI -- which surfaces much later as an app
+# deploy failing for reasons that point nowhere near this file.
+#
+# CI: secret TF_VAR_cluster_admin_role_arns
+cluster_admin_role_arns = [
+  "arn:aws:iam::111122223333:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AWSAdministratorAccess_0123456789abcdef",
+  "arn:aws:iam::111122223333:role/tech-challenge-gha-apply",
+]
+
+# ---------------------------------------------------------------------------
+# Optional: public DNS and TLS
+# ---------------------------------------------------------------------------
+# Off unless you set these, which is what lets the stack deploy into a bare
+# account with no prerequisites. Turning it on needs a domain that ALREADY
+# resolves publicly, with a hosted zone in this account -- the stack never
+# registers one (ADR-0007). The zone is looked up by NAME.
+#
+# With these unset you still get a working deployment, served over HTTP on the
+# ALB's own hostname. `make up` picks the HTTPS path automatically when they
+# are set.
+#
+# CI: repository VARIABLES (not secrets -- GitHub masks secret values in logs,
+# and a masked domain turns every plan comment into a wall of ***)
+#   TF_VAR_enable_dns, TF_VAR_domain_name, TF_VAR_app_subdomain
+#
+# enable_dns    = true
+# domain_name   = "example.com"
+# app_subdomain = "hello"          # serves https://hello.example.com
+#
+# hosted_zone_id is only needed to disambiguate duplicate zone names:
+# hosted_zone_id = "Z0123456789ABCDEFGHIJ"

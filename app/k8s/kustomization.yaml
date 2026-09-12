@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: tech-challenge
+
+# Set by CI rather than edited by hand:
+#   kustomize edit set image hello-world=<repo>@<digest>
+# This is the replacement for `sed -i` on a tracked file. Kustomize rewrites
+# the reference on the way out, leaving the manifest in git unmodified.
+# No `images:` block, deliberately.
+#
+# The registry hostname embeds an AWS account id, so committing it makes the
+# repo undeployable in any other account -- the same defect that was removed
+# from the Terraform layer. `make image` records the digest and `make deploy`
+# renders this kustomization into a temp directory with the reference injected,
+# so the file in git stays account-free and nothing edits it in place.
+#
+# Applying this directory directly (kubectl apply -k app/k8s) will fail on an
+# unresolvable image. That is intentional: it fails loudly rather than pulling
+# something unexpected from Docker Hub.

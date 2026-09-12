@@ -1,0 +1,71 @@
+# ---- Terraform ----------------------------------------------------------
+**/.terraform/
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.json
+crash.log
+crash.*.log
+
+# Local variable overrides. Environment config lives in environments/*.tfvars
+# and IS tracked -- it contains no secrets, only shape.
+terraform.tfvars
+terraform.tfvars.json
+# The example IS tracked -- it is how anyone knows what the ignored file needs.
+# Explicit, so that widening the rule above to terraform.tfvars* later does not
+# silently take the documentation with it.
+!terraform.tfvars.example
+*.auto.tfvars
+*.auto.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored. Commit it --
+# it is what makes provider resolution reproducible across machines and CI.
+
+# ---- Credentials and keys ------------------------------------------------
+*.pem
+*.key
+*.ppk
+*.p12
+*.pfx
+id_rsa*
+techkey
+techkey.pub
+kubeconfig
+kubeconfig-*
+.aws/
+*.retry
+
+# ---- Packer --------------------------------------------------------------
+packer_cache/
+*.box
+manifest.json
+
+# ---- Node ----------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# ---- OS / editor ---------------------------------------------------------
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- Claude Code ---------------------------------------------------------
+CLAUDE.local.md
+.claude/settings.local.json
+CLAUDE.md
+
+# Generated backend configuration — derived from the AWS account at init time,
+# never committed, because the bucket name embeds the account id.
+.backend/

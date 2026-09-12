@@ -1,0 +1,111 @@
+# Checkov runs BLOCKING in CI. Every skip below names the check and the reason
+# it does not apply here. An unexplained skip list is how a security gate
+# quietly stops meaning anything -- which is exactly what happened to the three
+# gates in the Jenkinsfile this replaced.
+#
+# Known coverage gap: external modules are not downloaded, so resources created
+# inside terraform-aws-modules/{vpc,eks} are not scanned. Downloading them would
+# flood the report with findings in code this repo does not control. The
+# trade-off is deliberate; the modules are pinned and widely reviewed.
+
+framework:
+  - terraform
+
+skip-check:
+  # --- State bucket -------------------------------------------------------
+  # CKV_AWS_18 S3 access logging. Would need a second bucket that itself needs
+  # logging. CloudTrail data events already cover access to this bucket.
+  - CKV_AWS_18
+  # CKV_AWS_144 Cross-region replication of Terraform state. Not warranted for
+  # a sandbox, and doubles the blast radius of a leaked bucket.
+  - CKV_AWS_144
+  # CKV_AWS_145 KMS CMK rather than SSE-S3. SSE-S3 is enabled. A CMK would add
+  # a key whose accidental deletion renders every state file permanently
+  # unreadable -- a worse failure mode than the one it prevents here.
+  - CKV_AWS_145
+  # CKV2_AWS_62 S3 event notifications. There is no consumer for state-object
+  # events in this design.
+  - CKV2_AWS_62
+
+  # --- Cluster ------------------------------------------------------------
+  # CKV_AWS_39 EKS public endpoint. Deliberate and constrained: ADR-0004 enables
+  # it only alongside private access and a CIDR allowlist, and a variable
+  # validation rejects 0.0.0.0/0 outright. prod sets it to false entirely.
+  - CKV_AWS_39
+  # CKV2_AWS_11 VPC flow logs. Enabled through the community VPC module's own
+  # variables, which checkov cannot trace without downloading the module.
+  - CKV2_AWS_11
+
+  # --- False positives checkov cannot resolve statically ------------------
+  # CKV2_AWS_5 "security group not attached to a resource". Both groups ARE
+  # attached -- one to the interface endpoints, one to the SSM host -- but the
+  # attachment happens through a module boundary checkov does not follow.
+  - CKV2_AWS_5
+
+  # --- SSM access host ----------------------------------------------------
+  # CKV_AWS_135 "EC2 should be EBS optimized". t3 instances are EBS-optimized
+  # unconditionally, so the attribute is cosmetic here -- but it is ForceNew,
+  # so setting it replaces the instance. Rebuilding a host to satisfy a checker
+  # for a property that is already true is the wrong trade.
+  - CKV_AWS_135
+  # CKV_AWS_126 EC2 detailed monitoring. This is a t3.micro jump host that
+  # terminates a port-forward and runs no workload; per-minute metrics would be
+  # a standing cost for data nobody reads.
+  - CKV_AWS_126
+
+  # --- ECR ----------------------------------------------------------------
+  # CKV_AWS_136 KMS encryption on ECR. AES256 encryption at rest IS enabled.
+  # Same reasoning as the state bucket: a CMK here buys little and introduces a
+  # key whose deletion would make every image unpullable.
+  - CKV_AWS_136
+
+  # --- Container Insights log groups --------------------------------------
+  # CKV_AWS_338 "retain logs for at least 1 year". A compliance default, and the
+  # right answer in a regulated environment. Wrong here: this is a demo cluster
+  # torn down between sessions, and a year of container logs is a standing cost
+  # for data nobody will read. Retention is set EXPLICITLY to 14 days in
+  # observability.tf, which is the point -- left alone the agent creates these
+  # groups with "Never expire", which is the failure this check exists to catch.
+  - CKV_AWS_338
+  # CKV_AWS_158 "log group encrypted by KMS". CloudWatch Logs are already
+  # encrypted at rest with an AWS-managed key. A CMK would add cost, a key
+  # policy the agent must be granted, and a key whose deletion makes the logs
+  # permanently unreadable. Same trade rejected for ECR and the state bucket.
+  - CKV_AWS_158
+
+  # --- Cluster encryption key ---------------------------------------------
+  # CKV2_AWS_64 "Ensure KMS key Policy is defined". aws_kms_key.eks deliberately
+  # carries no `policy`, so AWS applies the default one -- and the default is
+  # what makes the design work: it grants the account root kms:*, which is the
+  # mechanism by which an IAM policy is allowed to delegate access to the key.
+  # The EKS module then attaches exactly the right IAM policy to the cluster
+  # role (aws_iam_policy.cluster_encryption, scoped to this key's ARN).
+  #
+  # This is not "we could not be bothered". A hand-written policy would have to
+  # name the cluster role, which the module derives from the key ARN -- a
+  # dependency cycle. The only policy writable here without that role is the
+  # default policy restated, which would satisfy the checker and change nothing.
+  # Satisfying a gate with a no-op is worse than recording why it does not fit.
+  # See ADR-0008.
+  - CKV2_AWS_64
+
+  # --- Module sourcing ----------------------------------------------------
+  # CKV_TF_1 "module source should use a commit hash". That rule targets git
+  # sources. These are registry modules with version constraints, which is the
+  # idiomatic form. Worth revisiting: constraints are ranges, and unlike
+  # providers there is no lock file for modules, so a minor module release can
+  # still change a plan.
+  - CKV_TF_1
+
+  # --- Accepted debt, NOT a false positive --------------------------------
+  # CKV_AWS_274 AdministratorAccess on the CI apply role. Checkov is right and
+  # this is a real compromise, documented in bootstrap/github-oidc.tf rather than
+  # hidden: a least-privilege policy for a stack that creates VPCs, EKS clusters,
+  # IAM roles, ACM certificates and Route53 records would be enormous and brittle.
+  # Mitigated by an explicit Deny -- which beats any Allow -- on the state
+  # bucket, route53domains:*, organizations, account, and iam:CreateAccessKey.
+  # The production fix is a permissions boundary on everything the role creates.
+  - CKV_AWS_274
+
+quiet: true
+compact: true

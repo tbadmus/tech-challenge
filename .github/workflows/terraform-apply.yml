@@ -1,0 +1,155 @@
+name: terraform-apply
+
+# dev applies on merge to dev. main triggers a prod apply that BLOCKS on a
+# required reviewer before it can touch anything.
+#
+# The gate is enforced by the GitHub Environment, not by this file:
+#   prod -> required_reviewers + branch policy (main only)
+#   dev  -> branch policy (dev only)
+#
+# Two independent things have to line up for a prod apply to run. GitHub will
+# not start the job until a reviewer approves it, and the AWS trust policy only
+# accepts `repo:<repo>:environment:prod` -- so a job that does not declare that
+# environment cannot assume the apply role at all, whatever branch it is on.
+# Neither control depends on the other being correct.
+on:
+  push:
+    branches: [dev, main]
+    # An ALLOW-list, not paths-ignore.
+    #
+    # This previously read `paths-ignore: ['docs/**', '**/*.md']`, which meant
+    # every change that was not documentation applied infrastructure --
+    # including edits to the workflow files themselves. Merging a CI-only
+    # change therefore rebuilt a torn-down environment, twice, and each
+    # cancellation left an orphaned EKS cluster that Terraform had created but
+    # never recorded in state.
+    #
+    # Applying real infrastructure should require a change to real
+    # infrastructure. Anything else goes through workflow_dispatch.
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/.terraform.lock.hcl'
+      - 'environments/**'
+      - 'bootstrap/**'
+      - 'cluster-addons/**'
+      - 'modules/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to apply
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prod]
+
+concurrency:
+  # Shared with app-build-deploy ON PURPOSE. The two workflows trigger on the
+  # same push and used to run in PARALLEL, so the app deploy raced the
+  # infrastructure that has to exist first -- on a rebuild it tried to reach a
+  # cluster that was still being created and failed every time.
+  #
+  # A single group name across both workflows makes GitHub queue them instead.
+  # cancel-in-progress stays false: killing a half-finished apply leaves partial
+  # infrastructure and an orphaned state lock, which is worse than waiting.
+  group: deploy-${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.16.2"
+  # Region is read from environments/<env>.tfvars at run time so it is
+  # defined in exactly one place. See the "Resolve region" step.
+  TF_ENV_DEFAULT: dev
+  # The API endpoint allowlist is deliberately absent from environments/*.tfvars
+  # because this repository is public -- publishing the one IP permitted to
+  # reach the cluster API would be a targeting aid. It arrives as a secret.
+  # TF_VAR_ env vars have the LOWEST precedence of any variable source, which
+  # is exactly why the key must stay unset in the tfvars file.
+  TF_VAR_cluster_endpoint_public_access_cidrs: ${{ secrets.TF_VAR_cluster_endpoint_public_access_cidrs }}
+  TF_VAR_cluster_admin_role_arns: ${{ secrets.TF_VAR_cluster_admin_role_arns }}
+
+jobs:
+  apply:
+    name: apply
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        env:
+          # Repository VARIABLES, not secrets, and deliberately so. GitHub masks
+          # secret values in log output, and a masked domain name turns every
+          # plan comment into a wall of *** -- unreadable, for a value that is
+          # public the moment anyone resolves the hostname.
+          DNS_ENABLED: ${{ vars.TF_VAR_enable_dns }}
+          DNS_DOMAIN: ${{ vars.TF_VAR_domain_name }}
+          DNS_SUBDOMAIN: ${{ vars.TF_VAR_app_subdomain }}
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+
+          # Optional per-account DNS settings, exported ONLY when the repository
+          # defines them. An empty TF_VAR_ is a VALUE, not an absence:
+          # TF_VAR_enable_dns="" does not parse as a bool, and
+          # TF_VAR_app_subdomain="" would override that variable's own default
+          # with an empty string. So test before exporting, and let the defaults
+          # in variables.tf stay the single source of truth.
+          if [ -n "${DNS_ENABLED:-}" ];   then echo "TF_VAR_enable_dns=$DNS_ENABLED"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_DOMAIN:-}" ];    then echo "TF_VAR_domain_name=$DNS_DOMAIN"      >> "$GITHUB_ENV"; fi
+          if [ -n "${DNS_SUBDOMAIN:-}" ]; then echo "TF_VAR_app_subdomain=$DNS_SUBDOMAIN" >> "$GITHUB_ENV"; fi
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
+
+      - name: Resolve environment
+        id: env
+        run: |
+          ENV="${{ github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}"
+          echo "name=$ENV" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-apply-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: make init ENV=${{ steps.env.outputs.name }}
+
+      - name: terraform plan
+        run: make plan ENV=${{ steps.env.outputs.name }}
+
+      - name: terraform apply
+        # Applies the saved plan FILE, not a fresh plan. Re-planning at apply
+        # time would apply whatever the world looks like at that moment, which
+        # is not necessarily what the approver reviewed.
+        run: make apply ENV=${{ steps.env.outputs.name }}
+
+      - name: Outputs
+        run: terraform output -no-color

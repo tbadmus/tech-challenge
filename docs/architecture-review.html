@@ -1,0 +1,835 @@
+<title>Rearchitecting Tech Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --ground:#EDEFF2;
+  --surface:#FFFFFF;
+  --surface-2:#F5F7F9;
+  --ink:#131A22;
+  --ink-soft:#57616F;
+  --ink-faint:#8A94A2;
+  --rule:#D2D8DF;
+  --rule-soft:#E3E8ED;
+  --accent:#0B6E6A;
+  --accent-soft:#E0EFEE;
+  --crit:#9E2B25;
+  --high:#9A6B10;
+  --med:#57616F;
+  --legacy:#8A94A2;
+  --shadow:0 1px 2px rgba(19,26,34,.05),0 8px 24px -12px rgba(19,26,34,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#10151A;
+    --surface:#181E25;
+    --surface-2:#1E262E;
+    --ink:#E3E8EE;
+    --ink-soft:#9BA6B3;
+    --ink-faint:#6F7B89;
+    --rule:#2C353F;
+    --rule-soft:#232B34;
+    --accent:#45B3AA;
+    --accent-soft:#16302F;
+    --crit:#E08078;
+    --high:#D6A93E;
+    --med:#9BA6B3;
+    --legacy:#6F7B89;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#10151A;
+  --surface:#181E25;
+  --surface-2:#1E262E;
+  --ink:#E3E8EE;
+  --ink-soft:#9BA6B3;
+  --ink-faint:#6F7B89;
+  --rule:#2C353F;
+  --rule-soft:#232B34;
+  --accent:#45B3AA;
+  --accent-soft:#16302F;
+  --crit:#E08078;
+  --high:#D6A93E;
+  --med:#9BA6B3;
+  --legacy:#6F7B89;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  font-size:16.5px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.shell{max-width:1160px;margin:0 auto;padding:0 28px 96px}
+.col{max-width:68ch;margin-inline:auto}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:1px solid var(--rule);
+  padding:56px 0 30px;
+  margin-bottom:44px;
+}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 14px;
+}
+h1{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:700;font-size:clamp(2.4rem,6vw,3.9rem);line-height:1.02;
+  letter-spacing:-.015em;margin:0 0 18px;text-wrap:balance;
+}
+.standfirst{font-size:1.2rem;line-height:1.5;color:var(--ink-soft);margin:0 0 30px;max-width:60ch}
+.meta{
+  display:flex;flex-wrap:wrap;gap:0 34px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11.5px;
+  color:var(--ink-faint);line-height:2.1;
+}
+.meta b{color:var(--ink-soft);font-weight:500}
+
+/* ---------- structure ---------- */
+main{display:flex;flex-direction:column;gap:60px}
+section{display:flex;flex-direction:column;gap:22px}
+h2{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:600;font-size:clamp(1.55rem,3vw,2.05rem);line-height:1.14;
+  letter-spacing:-.01em;margin:0;text-wrap:balance;
+}
+h3{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:600;font-size:1.22rem;line-height:1.25;margin:0;text-wrap:balance;
+}
+.sec-head{
+  max-width:68ch;margin-inline:auto;width:100%;
+  border-top:2px solid var(--ink);padding-top:14px;
+  display:flex;flex-direction:column;gap:10px;
+}
+p{margin:0}
+.col p + p{margin-top:1em}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+strong{font-weight:600}
+code,.mono{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.855em;
+}
+code{background:var(--surface-2);border:1px solid var(--rule-soft);border-radius:3px;padding:.08em .34em}
+ul{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:.5em}
+li::marker{color:var(--ink-faint)}
+
+/* ---------- verdict ---------- */
+.verdict{
+  background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);
+  border-radius:4px;padding:26px 30px;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;gap:14px;
+}
+.verdict p{font-size:1.06rem}
+
+/* ---------- figures ---------- */
+figure{margin:0;display:flex;flex-direction:column;gap:12px}
+.figbox{
+  background:var(--surface);border:1px solid var(--rule);border-radius:5px;
+  padding:22px;overflow-x:auto;box-shadow:var(--shadow);
+}
+.figbox svg{display:block;width:100%;min-width:640px;height:auto;color:var(--ink)}
+figcaption{
+  max-width:68ch;margin-inline:auto;width:100%;
+  font-size:.87rem;color:var(--ink-soft);line-height:1.5;
+}
+figcaption b{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+  display:block;margin-bottom:4px;
+}
+.d-label{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:13px;font-weight:600;fill:currentColor}
+.d-box{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:12.5px;fill:currentColor}
+.d-sm{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;fill:currentColor;opacity:.72}
+.d-tag{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;letter-spacing:.1em;fill:currentColor;opacity:.6}
+.d-acc{fill:var(--accent)}
+.d-fade{opacity:.45}
+
+/* ---------- Q blocks ---------- */
+.qhead{display:flex;gap:16px;align-items:baseline;max-width:68ch;margin-inline:auto;width:100%}
+.qnum{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;font-weight:600;
+  color:var(--accent);letter-spacing:.08em;flex:none;padding-top:.2em;
+}
+.answer{
+  max-width:68ch;margin-inline:auto;width:100%;
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-size:1.3rem;font-weight:600;line-height:1.3;letter-spacing:-.005em;
+  border-left:3px solid var(--accent);padding-left:16px;text-wrap:balance;
+}
+
+/* ---------- findings ---------- */
+.findings{display:flex;flex-direction:column;gap:14px}
+.f{
+  background:var(--surface);border:1px solid var(--rule);border-radius:4px;
+  border-left:3px solid var(--c,var(--med));
+  padding:18px 22px;display:flex;flex-direction:column;gap:9px;
+}
+.f--crit{--c:var(--crit)}
+.f--high{--c:var(--high)}
+.f-top{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:baseline}
+.sev{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;font-weight:600;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--c,var(--med));
+  border:1px solid currentColor;border-radius:2px;padding:2px 6px;flex:none;
+}
+.f-title{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-weight:600;font-size:1.08rem;line-height:1.3}
+.f-loc{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;color:var(--ink-faint);
+  width:100%;word-break:break-word;
+}
+.f p{font-size:.95rem;line-height:1.55}
+.fix{font-size:.95rem;line-height:1.55;color:var(--ink-soft)}
+.fix b{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-right:8px;
+}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:5px;background:var(--surface);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
+th,td{text-align:left;padding:11px 18px;border-bottom:1px solid var(--rule-soft);vertical-align:top}
+thead th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10px;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);
+  background:var(--surface-2);border-bottom:1px solid var(--rule);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:none}
+td.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.8rem;font-variant-numeric:tabular-nums}
+.was{color:var(--ink-faint);text-decoration:line-through;text-decoration-thickness:1px}
+.now{color:var(--accent);font-weight:500}
+
+/* ---------- phases ---------- */
+.phases{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule)}
+.ph{
+  display:grid;grid-template-columns:auto 1fr;gap:4px 22px;
+  padding:16px 0;border-bottom:1px solid var(--rule-soft);align-items:baseline;
+}
+.ph-id{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;font-weight:600;
+  color:var(--accent);letter-spacing:.05em;white-space:nowrap;
+}
+.ph-branch{
+  grid-column:1;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:10px;color:var(--ink-faint);
+}
+.ph-body{grid-column:2;display:flex;flex-direction:column;gap:5px}
+.ph-t{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-weight:600;font-size:1.05rem}
+.ph-d{font-size:.93rem;color:var(--ink-soft);line-height:1.5}
+@media (max-width:620px){
+  .ph{grid-template-columns:1fr}
+  .ph-body{grid-column:1}
+}
+
+/* ---------- decisions ---------- */
+.dec{
+  background:var(--surface-2);border:1px solid var(--rule);border-radius:4px;
+  padding:18px 22px;display:flex;flex-direction:column;gap:7px;
+}
+.dec-q{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-weight:600;font-size:1.05rem}
+.dec-o{font-size:.93rem;color:var(--ink-soft);line-height:1.55}
+.rec{color:var(--accent);font-weight:600}
+
+footer{
+  margin-top:76px;padding-top:22px;border-top:1px solid var(--rule);
+  max-width:68ch;margin-inline:auto;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  color:var(--ink-faint);line-height:1.8;
+}
+</style>
+
+<div class="shell">
+
+<header class="mast">
+  <p class="eyebrow">Design review &amp; modernization plan</p>
+  <h1>Rearchitecting Tech&nbsp;Challenge</h1>
+  <p class="standfirst">A 2022 two-VPC EKS stack, read end to end — what it actually does, where it is broken or exposed, and the single-VPC design that replaces it.</p>
+  <div class="meta">
+    <span><b>Repo</b> github.com/tbadmus/tech-challenge</span>
+    <span><b>Code as of</b> Jun 2022 · 2f11cf3</span>
+    <span><b>Reviewed</b> 10 Sep 2026</span>
+    <span><b>Scope</b> 51 files · Terraform, Packer, Jenkins, K8s manifests</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ============ VERDICT ============ -->
+<section>
+  <div class="col">
+    <div class="verdict">
+      <p><strong>The design is sound in intent and obsolete in execution.</strong> Keeping worker nodes off the public internet is still right. Everything built to achieve it — a second VPC, a Transit Gateway, an imperative routing script, a public SSH bastion — has been replaced by native capability that did not exist or was not mature in 2022.</p>
+      <p>Two findings change the risk picture immediately. The cluster you believe is private has <strong>a public API endpoint open to 0.0.0.0/0</strong>, because endpoint access was never configured and that is the AWS default. And <strong>every security gate in the pipeline is decorative</strong> — Sonar cannot fail the build, Trivy has no exit code, and its flag was removed from the tool years ago.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHAT IT DOES ============ -->
+<section>
+  <div class="sec-head"><h2>What the stack does today</h2></div>
+  <div class="col">
+    <p>One Terraform root composes eleven hand-rolled modules into two VPCs. <code>network1</code> (10.0.0.0/16) is public and holds a bastion, an IGW and a NAT gateway. <code>network2</code> (172.31.0.0/16) has no IGW and no NAT at all, and holds the EKS cluster and its managed node group. A Transit Gateway joins them, and <code>network2</code>'s default route points at it — so a pod reaching the internet leaves its VPC, crosses the TGW, and hairpins out through the other VPC's NAT gateway.</p>
+    <p>That extra hop is the whole reason the repo is shaped the way it is. It is also the reason for <code>routes.sh</code>, a shell script invoked from a <code>null_resource</code> that adds the TGW default-route-table entry with the AWS CLI, because it was never modelled as a Terraform resource. The node group cannot register without that route, which is why <code>module.eks2</code> carries an explicit <code>depends_on</code> chain.</p>
+    <p>The app is an Express hello-world behind a <code>Service</code> of <code>type: LoadBalancer</code> annotated internal, so verification means SSH-ing to the bastion and curling from inside. A self-managed Elasticsearch/Fluentd/Kibana stack is applied from raw manifests. A Jenkins declarative pipeline runs Sonar, Trivy, Packer, Terraform, then the two <code>kubectl apply</code> stages.</p>
+  </div>
+</section>
+
+<!-- ============ Q1 ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Question one — are two VPCs still needed?</h2>
+  </div>
+  <p class="answer">No. A single VPC with public and private subnets gives you identical isolation, one fewer network hop, and no imperative routing script.</p>
+  <div class="col">
+    <p>The isolation you want comes from <em>subnet routing</em>, not from a VPC boundary. Nodes in a private subnet have no public IP and no inbound path from the internet whether that subnet sits in its own VPC or beside the public subnets. Splitting them bought no additional containment — it only moved the NAT gateway one hop further away.</p>
+  </div>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 940 330" role="img" aria-label="Comparison of pod egress paths: today a pod exits through a Transit Gateway into a second VPC's NAT gateway before reaching the internet; in the target design the Transit Gateway hop is removed and the pod reaches a NAT gateway in the same VPC.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- Panel A -->
+        <rect x="10" y="10" width="420" height="310" rx="5" fill="none" stroke="currentColor" stroke-opacity=".22"/>
+        <text class="d-tag" x="30" y="36">TODAY — 2 VPCs + TRANSIT GATEWAY</text>
+
+        <rect x="50" y="56" width="340" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="220" y="81" text-anchor="middle">Pod — private subnet, VPC2 (172.31/16)</text>
+        <line x1="220" y1="96" x2="220" y2="126" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar)"/>
+        <text class="d-sm" x="232" y="117">0.0.0.0/0</text>
+
+        <rect x="50" y="132" width="340" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55" stroke-dasharray="5 4"/>
+        <text class="d-box" x="220" y="151" text-anchor="middle">Transit Gateway</text>
+        <text class="d-sm" x="220" y="166" text-anchor="middle">2 attachments · route added by routes.sh</text>
+        <line x1="220" y1="172" x2="220" y2="202" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar)"/>
+        <text class="d-sm" x="232" y="193">cross-VPC</text>
+
+        <rect x="50" y="208" width="340" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="220" y="233" text-anchor="middle">NAT Gateway — public subnet, VPC1 (10.0/16)</text>
+        <line x1="220" y1="248" x2="220" y2="272" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar)"/>
+
+        <rect x="50" y="276" width="340" height="34" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="220" y="298" text-anchor="middle">IGW → Internet</text>
+
+        <!-- Panel B -->
+        <rect x="510" y="10" width="420" height="310" rx="5" fill="none" stroke="var(--accent)" stroke-opacity=".45"/>
+        <text class="d-tag d-acc" x="530" y="36">TARGET — 1 VPC</text>
+
+        <rect x="550" y="56" width="340" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="720" y="81" text-anchor="middle">Pod — private subnet (10.0.0.0/16)</text>
+
+        <line x1="720" y1="96" x2="720" y2="202" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ar-a)"/>
+        <rect x="550" y="132" width="340" height="40" rx="3" fill="var(--ground)" stroke="none"/>
+        <text class="d-sm d-acc" x="740" y="149" style="opacity:1">hop removed</text>
+        <text class="d-sm" x="740" y="164">no TGW · no routes.sh · no null_resource</text>
+
+        <rect x="550" y="208" width="340" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="720" y="233" text-anchor="middle">NAT Gateway — public subnet, same VPC</text>
+        <line x1="720" y1="248" x2="720" y2="272" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar)"/>
+
+        <rect x="550" y="276" width="340" height="34" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="720" y="298" text-anchor="middle">IGW → Internet</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 1 — pod egress</b>The Transit Gateway sits at the same position in both panels so the removed hop is visible. Collapsing to one VPC deletes an entire routing tier, and with it the only piece of infrastructure in the repo that Terraform does not manage.</figcaption>
+  </figure>
+
+  <div class="col">
+    <p>There is also a running cost. A Transit Gateway attachment bills roughly $0.05 per hour, so two attachments are about <strong>$70–75 a month before data-processing charges</strong> — for a demo cluster, spent on a hop that adds nothing. (Verify against current pricing for <code>us-east-1</code>.)</p>
+    <p><strong>What to keep.</strong> The hub-and-spoke pattern is genuinely worth teaching — it is how multi-account and on-premises connectivity actually works. Keep it as an <em>optional</em> module with its own README, off the critical path, so a junior engineer can stand it up deliberately rather than inheriting it as an unexplained dependency.</p>
+  </div>
+</section>
+
+<!-- ============ Q2 ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Question two — can a controller handle the load balancers?</h2>
+  </div>
+  <p class="answer">Yes. The AWS Load Balancer Controller creates a real ALB from an Ingress and targets pods directly by IP — so the app is publicly reachable while every node stays private.</p>
+  <div class="col">
+    <p>Today the <code>Service</code> carries <code>service.beta.kubernetes.io/aws-load-balancer-internal: "true"</code>. That is the legacy in-tree annotation, handled by the AWS cloud provider, and what it produces is a Classic Load Balancer — a load balancer type AWS has been steering people off for years. Because it is internal, nothing outside the VPCs can reach it, which is why the README's last step is to SSH into a bastion and run <code>curl</code>.</p>
+    <p>The controller changes the shape of the answer, not just the implementation. With <code>target-type: ip</code> the ALB registers pod IPs as targets directly, so it can live in the public subnets while its targets live in the private ones. The subnet boundary is crossed by the load balancer, not by the node.</p>
+  </div>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 940 320" role="img" aria-label="Today the app sits behind an internal load balancer with no public path, reachable only by SSH-ing to a bastion and curling. With the AWS Load Balancer Controller, an internet-facing ALB in public subnets targets pod IPs in private subnets directly.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+        <!-- Panel A -->
+        <rect x="10" y="10" width="420" height="300" rx="5" fill="none" stroke="currentColor" stroke-opacity=".22"/>
+        <text class="d-tag" x="30" y="36">TODAY — INTERNAL CLB, NO PUBLIC PATH</text>
+
+        <rect x="40" y="58" width="150" height="36" rx="3" fill="none" stroke="currentColor" stroke-opacity=".35"/>
+        <text class="d-box d-fade" x="115" y="81" text-anchor="middle">Internet</text>
+        <line x1="115" y1="94" x2="115" y2="158" stroke="currentColor" stroke-opacity=".3" stroke-dasharray="4 5"/>
+        <line x1="106" y1="117" x2="124" y2="135" stroke="var(--crit)" stroke-width="1.6"/>
+        <line x1="124" y1="117" x2="106" y2="135" stroke="var(--crit)" stroke-width="1.6"/>
+        <text class="d-sm" x="134" y="130" style="opacity:1;fill:var(--crit)">no public path</text>
+
+        <rect x="250" y="58" width="150" height="36" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="325" y="81" text-anchor="middle">Bastion :22</text>
+        <path d="M325 94 L325 130 L300 158" fill="none" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar2)"/>
+        <text class="d-sm" x="336" y="122">curl</text>
+
+        <rect x="40" y="164" width="360" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="220" y="189" text-anchor="middle">Classic LB — scheme: internal</text>
+        <line x1="220" y1="204" x2="220" y2="238" stroke="currentColor" stroke-opacity=".55" marker-end="url(#ar2)"/>
+        <rect x="105" y="244" width="230" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="220" y="262" text-anchor="middle">Pod :8080</text>
+        <text class="d-sm" x="220" y="277" text-anchor="middle">via NodePort on every node</text>
+
+        <!-- Panel B -->
+        <rect x="510" y="10" width="420" height="300" rx="5" fill="none" stroke="var(--accent)" stroke-opacity=".45"/>
+        <text class="d-tag d-acc" x="530" y="36">TARGET — AWS LOAD BALANCER CONTROLLER</text>
+
+        <rect x="645" y="58" width="150" height="36" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="720" y="81" text-anchor="middle">Internet</text>
+        <line x1="720" y1="94" x2="720" y2="158" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ar-a2)"/>
+        <text class="d-sm" x="732" y="130">HTTPS :443 · ACM cert</text>
+
+        <rect x="540" y="164" width="360" height="44" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="d-box" x="720" y="184" text-anchor="middle">ALB — internet-facing</text>
+        <text class="d-sm" x="720" y="199" text-anchor="middle">public subnets · kubernetes.io/role/elb=1</text>
+        <line x1="720" y1="208" x2="720" y2="242" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ar-a2)"/>
+        <text class="d-sm" x="732" y="230" style="opacity:1;fill:var(--accent)">target-type: ip</text>
+
+        <rect x="540" y="248" width="360" height="44" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="720" y="268" text-anchor="middle">Pod :8080 — private subnet</text>
+        <text class="d-sm" x="720" y="283" text-anchor="middle">no public IP · no inbound route</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 2 — ingress</b>The controller registers pod IPs as ALB targets, so the load balancer spans the public/private boundary and the pod never does. The bastion drops out of the verification path entirely — the demo becomes a URL in a browser, which is also what makes a usable screenshot.</figcaption>
+  </figure>
+
+  <div class="col">
+    <p>Three details make this a small change rather than a rewrite. The controller discovers subnets by the tags <code>kubernetes.io/role/elb</code> and <code>kubernetes.io/role/internal-elb</code> — <code>modules/vpc</code> already applies both, so that work carries over. It needs an IAM role, which is what EKS Pod Identity is for. And when you do want L4, the same controller produces a modern NLB via <code>aws-load-balancer-type: external</code> instead of a Classic LB.</p>
+    <p>The payoff beyond reachability is that TLS, WAF association, health checks, path routing and OIDC authentication all become Ingress annotations rather than console clicks — which is exactly the no-ClickOps property the project is meant to demonstrate.</p>
+  </div>
+</section>
+
+<!-- ============ Q3 ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Question three — can the cluster stay private and still be managed?</h2>
+  </div>
+  <p class="answer">Yes, and the more urgent point is that it is not private now. Endpoint access was never configured, so the API server is published to the whole internet by default.</p>
+  <div class="col">
+    <p><code>modules/eks/main.tf</code> sets only <code>subnet_ids</code> inside <code>vpc_config</code>. The AWS defaults then apply: <code>endpoint_public_access = true</code>, <code>public_access_cidrs = ["0.0.0.0/0"]</code>, <code>endpoint_private_access = false</code>. IAM still gates authentication, so this is not an open cluster — but the network posture is the opposite of the one the architecture was built to achieve, and the README's stated reason for the bastion ("cannot be accessed from local without VPN") is not accurate for the API endpoint. It is only true of the internal load balancer.</p>
+    <p>Network reachability and authorization are separate problems, and the repo currently under-configures both. Three network postures are worth knowing:</p>
+  </div>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 940 290" role="img" aria-label="Three ways to reach a private EKS API endpoint: a public endpoint restricted by CIDR allowlist, an SSM port-forward through a private instance with no SSH, and a fully private endpoint reached from a CI runner inside the VPC.">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+        <rect x="700" y="44" width="215" height="212" rx="4" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+        <text class="d-box" x="807" y="142" text-anchor="middle">EKS API server</text>
+        <text class="d-sm" x="807" y="158" text-anchor="middle">AWS-managed</text>
+
+        <!-- Row A -->
+        <rect x="20" y="52" width="175" height="38" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+        <text class="d-box" x="107" y="76" text-anchor="middle">Engineer / CI</text>
+        <line x1="195" y1="71" x2="698" y2="105" stroke="currentColor" stroke-opacity=".45" marker-end="url(#ar3)"/>
+        <text class="d-sm" x="215" y="60" style="opacity:1">A · public endpoint + public_access_cidrs allowlist</text>
+        <text class="d-sm" x="215" y="74">simplest · but hosted CI runners have wide, shifting IP ranges</text>
+
+        <!-- Row B (recommended) -->
+        <rect x="20" y="126" width="175" height="38" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="d-box" x="107" y="150" text-anchor="middle">Engineer / CI</text>
+        <line x1="195" y1="145" x2="392" y2="145" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ar-a3)"/>
+        <rect x="396" y="126" width="130" height="38" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="d-box d-acc" x="461" y="150" text-anchor="middle">SSM session</text>
+        <line x1="526" y1="145" x2="698" y2="145" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ar-a3)"/>
+        <text class="d-sm d-acc" x="215" y="118" style="opacity:1">B · port-forward through a private instance — RECOMMENDED</text>
+        <text class="d-sm" x="215" y="182">no SSH · no key pair · no port 22 · no public IP · audited in CloudTrail</text>
+
+        <!-- Row C -->
+        <rect x="20" y="212" width="175" height="38" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+        <text class="d-box" x="107" y="236" text-anchor="middle">CI runner in VPC</text>
+        <line x1="195" y1="231" x2="698" y2="200" stroke="currentColor" stroke-opacity=".45" marker-end="url(#ar3)"/>
+        <text class="d-sm" x="215" y="206" style="opacity:1">C · fully private endpoint, resolved inside the VPC</text>
+        <text class="d-sm" x="215" y="220">closest to enterprise reality · requires the full VPC-endpoint set</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 3 — management access</b>All three keep nodes private; they differ only in how an operator's kubectl request reaches the API server. Option B removes the public bastion, the shared key pair and the internet-facing port 22 in one move, and every session is recorded in CloudTrail.</figcaption>
+  </figure>
+
+  <div class="col">
+    <p>Option B in practice is one command, with no inbound security-group rule anywhere:</p>
+    <p class="mono" style="font-size:.8rem;background:var(--surface-2);border:1px solid var(--rule-soft);border-radius:4px;padding:12px 14px;display:block;overflow-x:auto;white-space:pre;line-height:1.7">aws ssm start-session --target $INSTANCE_ID \
+  --document-name AWS-StartPortForwardingSessionToRemoteHost \
+  --parameters '{"host":["$EKS_ENDPOINT"],"portNumber":["443"],"localPortNumber":["8443"]}'</p>
+    <p>The AMI already installs <code>amazon-ssm-agent</code> and the bastion role already carries <code>AmazonSSMManagedInstanceCore</code>, so this path is most of the way built — it just sits unused next to an SSH key pair that does the same job less safely.</p>
+    <p><strong>Authorization is the other half, and it is the bigger no-ClickOps gap.</strong> The repo never sets <code>access_config</code>, so the cluster falls back to the <code>aws-auth</code> ConfigMap and the IAM principal that ran <code>terraform apply</code> is the only administrator. Adding a colleague means hand-editing a ConfigMap in a live cluster — the exact manual step the project exists to eliminate. Setting <code>authentication_mode = "API"</code> and declaring <code>aws_eks_access_entry</code> resources maps SSO permission-set roles to cluster access in Terraform, in code, reviewable in a pull request.</p>
+    <p>One dependency to plan for: if you go all the way to option C, a private cluster with no NAT needs interface endpoints for <code>ecr.api</code>, <code>ecr.dkr</code>, <code>logs</code>, <code>sts</code>, <code>ec2</code> and <code>elasticloadbalancing</code>, plus the S3 gateway endpoint — otherwise image pulls and log shipping fail with no obvious cause. That is a good teaching moment in itself.</p>
+  </div>
+</section>
+
+<!-- ============ TARGET ============ -->
+<section>
+  <div class="sec-head"><h2>The target architecture</h2></div>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 470" role="img" aria-label="Target architecture: a single VPC across three availability zones, with public subnets holding an internet-facing ALB, NAT gateway and internet gateway, private subnets holding EKS nodes, the load balancer controller and Fluent Bit, and a row of VPC endpoints for ECR, logs and STS.">
+        <defs>
+          <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+        <rect x="330" y="12" width="180" height="36" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="420" y="35" text-anchor="middle">Internet</text>
+
+        <rect x="640" y="12" width="290" height="36" rx="3" fill="none" stroke="currentColor" stroke-opacity=".4" stroke-dasharray="5 4"/>
+        <text class="d-box d-fade" x="785" y="35" text-anchor="middle">EKS control plane (AWS-managed)</text>
+
+        <rect x="20" y="76" width="920" height="382" rx="6" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+        <text class="d-tag" x="40" y="100">VPC 10.0.0.0/16 · 3 AVAILABILITY ZONES</text>
+
+        <!-- public band -->
+        <rect x="42" y="114" width="876" height="96" rx="4" fill="none" stroke="currentColor" stroke-opacity=".2"/>
+        <text class="d-tag" x="60" y="134">PUBLIC SUBNETS ×3 · kubernetes.io/role/elb=1</text>
+        <rect x="62" y="144" width="220" height="48" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text class="d-box d-acc" x="172" y="166" text-anchor="middle">ALB — internet-facing</text>
+        <text class="d-sm" x="172" y="181" text-anchor="middle">created from Ingress</text>
+        <rect x="312" y="144" width="150" height="48" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+        <text class="d-box" x="387" y="173" text-anchor="middle">NAT Gateway</text>
+        <rect x="492" y="144" width="130" height="48" rx="3" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+        <text class="d-box" x="557" y="173" text-anchor="middle">IGW</text>
+
+        <!-- private band -->
+        <rect x="42" y="228" width="876" height="122" rx="4" fill="none" stroke="currentColor" stroke-opacity=".2"/>
+        <text class="d-tag" x="60" y="248">PRIVATE SUBNETS ×3 · kubernetes.io/role/internal-elb=1</text>
+        <rect x="62" y="258" width="252" height="72" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="188" y="284" text-anchor="middle">EKS managed nodes</text>
+        <text class="d-sm" x="188" y="300" text-anchor="middle">AL2023 · app pods</text>
+        <text class="d-sm" x="188" y="315" text-anchor="middle">no public IP</text>
+        <rect x="344" y="258" width="222" height="72" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="455" y="284" text-anchor="middle">AWS LB Controller</text>
+        <text class="d-sm" x="455" y="300" text-anchor="middle">EKS Pod Identity</text>
+        <text class="d-sm" x="455" y="315" text-anchor="middle">no static credentials</text>
+        <rect x="596" y="258" width="302" height="72" rx="3" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+        <text class="d-box" x="747" y="284" text-anchor="middle">Fluent Bit → CloudWatch Logs</text>
+        <text class="d-sm" x="747" y="300" text-anchor="middle">DaemonSet · replaces self-managed EFK</text>
+        <text class="d-sm" x="747" y="315" text-anchor="middle">no Elasticsearch to operate</text>
+
+        <!-- endpoints -->
+        <rect x="42" y="368" width="876" height="52" rx="4" fill="none" stroke="currentColor" stroke-opacity=".35" stroke-dasharray="5 4"/>
+        <text class="d-tag" x="60" y="388">VPC ENDPOINTS</text>
+        <text class="d-sm" x="60" y="406" style="opacity:1">s3 (gateway) · ecr.api · ecr.dkr · logs · sts · ec2 · elasticloadbalancing</text>
+
+        <!-- arrows -->
+        <line x1="420" y1="48" x2="248" y2="142" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ar-a4)"/>
+        <text class="d-sm d-acc" x="300" y="80" style="opacity:1">HTTPS</text>
+        <line x1="172" y1="192" x2="172" y2="256" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ar-a4)"/>
+        <text class="d-sm d-acc" x="182" y="228" style="opacity:1">target-type: ip</text>
+        <line x1="300" y1="270" x2="330" y2="194" stroke="currentColor" stroke-opacity=".5" marker-end="url(#ar4)"/>
+        <text class="d-sm" x="306" y="240">egress</text>
+        <line x1="462" y1="168" x2="490" y2="168" stroke="currentColor" stroke-opacity=".5" marker-end="url(#ar4)"/>
+        <line x1="120" y1="330" x2="120" y2="366" stroke="currentColor" stroke-opacity=".5" marker-end="url(#ar4)"/>
+        <text class="d-sm" x="130" y="352">ECR · logs — never via NAT</text>
+        <line x1="785" y1="48" x2="785" y2="256" stroke="currentColor" stroke-opacity=".35" stroke-dasharray="4 5" marker-end="url(#ar4)"/>
+        <text class="d-sm" x="795" y="150">private endpoint + access entries</text>
+      </svg>
+    </div>
+    <figcaption><b>Figure 4 — target</b>One VPC, three AZs, two subnet tiers. Everything the old design achieved with a second VPC and a Transit Gateway is achieved here by subnet routing, and the two things it never achieved — a public path to the app and a private API endpoint — come from the load balancer controller and endpoint configuration respectively.</figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Today</th><th>Target</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Network</td><td class="was">2 VPCs + TGW, 2 AZ</td><td class="now">1 VPC, 3 AZ, + VPC endpoints</td><td>Same isolation, one less hop, no imperative route</td></tr>
+        <tr><td>API endpoint</td><td class="was">public, 0.0.0.0/0 (default)</td><td class="now">private + allowlisted public</td><td>Matches the stated design intent</td></tr>
+        <tr><td>Cluster auth</td><td class="was"><code>aws-auth</code> by default</td><td class="now"><code>authentication_mode = "API"</code> + access entries</td><td>Adding an operator stops being a manual edit</td></tr>
+        <tr><td>Operator access</td><td class="was">public bastion, SSH :22 open</td><td class="now">SSM port-forward, no SSH</td><td>No key pair, no open port, CloudTrail-audited</td></tr>
+        <tr><td>Ingress</td><td class="was">internal Classic LB</td><td class="now">ALB via LB Controller, <code>target-type: ip</code></td><td>Public app, private pods, TLS as annotation</td></tr>
+        <tr><td>Node OS</td><td class="was">AL2, EKS 1.21</td><td class="now">AL2023 or Bottlerocket, current version</td><td>AL2 EKS AMIs are end-of-life</td></tr>
+        <tr><td>Pod IAM</td><td class="was">none — no OIDC provider</td><td class="now">EKS Pod Identity</td><td>Controllers need scoped roles, not node roles</td></tr>
+        <tr><td>Addons</td><td class="was">unmanaged</td><td class="now">vpc-cni, coredns, kube-proxy, ebs-csi, pod-identity</td><td>EBS CSI is required for any PVC on modern EKS</td></tr>
+        <tr><td>Logging</td><td class="was">self-managed EFK 7.15.2</td><td class="now">Fluent Bit → CloudWatch (EFK optional)</td><td>Nothing to patch, nothing to size, no PVC</td></tr>
+        <tr><td>Manifests</td><td class="was"><code>sed -i</code> on tracked YAML</td><td class="now">Helm or Kustomize, digest-pinned image</td><td>Idempotent, and secrets stop landing on disk</td></tr>
+        <tr><td>CI</td><td class="was">Jenkins, static creds, gates disabled</td><td class="now">OIDC role assumption, gates that fail</td><td>No long-lived keys; scans that mean something</td></tr>
+        <tr><td>State</td><td class="was">one key, no locking</td><td class="now">per-environment key + locking</td><td>dev and main currently share one state file</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ FINDINGS ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Findings</h2>
+    <p style="font-size:.95rem;color:var(--ink-soft);margin:0">Every item below was confirmed by reading the code, not inferred. Line references are against commit <code>2f11cf3</code>.</p>
+  </div>
+
+  <div class="findings">
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">The private cluster has a public API endpoint</span><span class="f-loc">modules/eks/main.tf:6–8</span></div>
+      <p><code>vpc_config</code> sets only <code>subnet_ids</code>. AWS then defaults to <code>endpoint_public_access = true</code> with <code>public_access_cidrs = ["0.0.0.0/0"]</code> and private access disabled — so the API server is internet-published and the private path was never enabled.</p>
+      <p class="fix"><b>Fix</b>Set <code>endpoint_private_access = true</code>, restrict <code>public_access_cidrs</code>, and add the CIDR list as a variable so environments differ without editing modules.</p>
+    </div>
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">All 65,535 TCP ports open to the peer VPC</span><span class="f-loc">modules/eks/main.tf:46–54</span></div>
+      <p><code>aws_security_group_rule.ec2</code> allows <code>from_port 0</code> to <code>to_port 65535</code> from <code>var.external_cidr</code>, which is the entire 10.0.0.0/16 VPC. It attaches to the EKS cluster security group, which is also applied to managed node group instances — so anything in the other VPC has full TCP reach to the control plane and every node.</p>
+      <p class="fix"><b>Fix</b>Narrow to :443 from named sources. In the single-VPC design this rule disappears with the second VPC.</p>
+    </div>
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">A private key is generated into the repo root, and <code>.gitignore</code> does not cover it</span><span class="f-loc">bootstrap.sh:4 · .gitignore · main.tf:135–141</span></div>
+      <p><code>bootstrap.sh</code> writes an unencrypted RSA key called <code>techkey</code> into the working directory. <code>.gitignore</code> contains three Claude Code entries and nothing else — no <code>techkey</code>, no <code>*.pem</code>, no <code>*.tfstate</code>, no <code>.terraform/</code>. The matching bastion accepts SSH from <code>0.0.0.0/0</code>, and the imported key pair <code>mvp</code> is shared account-wide.</p>
+      <p class="fix"><b>Fix</b>Extend <code>.gitignore</code> first — it is a one-line change guarding a credential leak. Then drop SSH entirely in favour of SSM (option B above); the AMI and the instance role already support it.</p>
+    </div>
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">Every security gate in the pipeline is decorative</span><span class="f-loc">Jenkinsfile:15–38</span></div>
+      <p>Three independent failures. <code>waitForQualityGate abortPipeline: false</code> means Sonar can never fail a build. Neither Trivy invocation passes <code>--exit-code 1</code>, so findings are printed and ignored. And <code>-security-checks</code> was renamed to <code>--scanners</code> years ago while <code>config</code> became <code>misconfig</code> — on any current Trivy the step errors or silently scans nothing.</p>
+      <p class="fix"><b>Fix</b><code>trivy fs --scanners vuln,misconfig,secret --exit-code 1 --severity HIGH,CRITICAL app/</code>, and let the quality gate abort. A gate that cannot fail is worse than no gate — it produces a green tick that means nothing.</p>
+    </div>
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">A credential is written into tracked YAML during the build</span><span class="f-loc">Jenkinsfile:76–86</span></div>
+      <p>The Elasticsearch password is <code>sed -i</code>'d from a Jenkins credential into all three <code>logging/*.yaml</code> files. It then exists in plaintext in the workspace, in the applied pod spec, and in anything that archives the workspace — and the credential masking Jenkins applies to logs does not extend to files on disk.</p>
+      <p class="fix"><b>Fix</b>A Kubernetes <code>Secret</code> sourced from AWS Secrets Manager via the Secrets Store CSI driver or External Secrets Operator. Never templated into a tracked file.</p>
+    </div>
+
+    <div class="f f--crit">
+      <div class="f-top"><span class="sev">Critical</span><span class="f-title">dev and master deploy to the same state file, with no locking</span><span class="f-loc">provider.tf:18–23 · Jenkinsfile:56–74</span></div>
+      <p>The backend hardcodes <code>key = "lb-terraform.tfstate"</code> with no DynamoDB table and no workspace separation, while the pipeline runs <code>terraform apply -auto-approve</code> on both <code>dev</code> and <code>master</code>. Both branches therefore mutate one set of real infrastructure, and two concurrent builds can corrupt the state. The feature→dev→main strategy is not actually implemented anywhere.</p>
+      <p class="fix"><b>Fix</b>Per-environment backend config passed via <code>-backend-config</code>, plus locking — S3 native lockfiles on Terraform 1.10+, or a DynamoDB table on older versions.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">The TGW default route is imperative and invisible to Terraform</span><span class="f-loc">main.tf:78–90 · routes.sh</span></div>
+      <p><code>null_resource.sp</code> shells out to a script that creates the route with the AWS CLI and swallows all errors with <code>|| true</code>. The route is not in state, so it is not recreated if the TGW is replaced, not removed by <code>terraform destroy</code>, and not visible in a plan. The trigger is a hash of the script file, so it never re-runs when the infrastructure it depends on changes.</p>
+      <p class="fix"><b>Fix</b>Deleted along with the Transit Gateway. If the optional TGW module is kept, model it as <code>aws_ec2_transit_gateway_route</code>.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">New image builds never reach running pods</span><span class="f-loc">app/deploy.sh:2 · app/deployment.yaml:20–24</span></div>
+      <p><code>docker tag node $REPO_URL</code> supplies no tag, so the image is pushed as <code>:latest</code>. The Deployment references the same untagged repository URL with <code>imagePullPolicy: IfNotPresent</code>. The pod spec is therefore byte-identical between builds — no rollout is triggered, and any node that has already cached the layer keeps serving the old code indefinitely.</p>
+      <p class="fix"><b>Fix</b>Tag with the immutable commit SHA and reference by digest. This also makes ECR tag immutability enforceable.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">In-place <code>sed</code> makes the pipeline non-idempotent</span><span class="f-loc">Jenkinsfile:94–106 · app/deploy.sh:6</span></div>
+      <p><code>sed -i</code> replaces the literal <code>REPO_URL</code> placeholder inside the tracked <code>deployment.yaml</code>. On the second run in a persistent Jenkins workspace the placeholder is already gone, so the substitution silently no-ops and whatever value was baked in previously is deployed instead.</p>
+      <p class="fix"><b>Fix</b>Render manifests rather than mutating them — Helm values or a Kustomize image override.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Every pipeline run replaces the bastion instance</span><span class="f-loc">ami/ami.json:9 · data.tf:6–19 · Jenkinsfile:40–48</span></div>
+      <p>Packer runs unconditionally on every build and names the AMI <code>bastion-ami-{{isotime}}</code>, so each build produces a new AMI. <code>data.aws_ami.ubuntu</code> then selects with <code>most_recent = true</code>, which changes <code>ami</code> on <code>aws_instance</code> and forces replacement. The result is a destroyed and recreated bastion on every run, plus unbounded AMI and snapshot sprawl that nothing ever cleans up.</p>
+      <p class="fix"><b>Fix</b>Build the AMI on its own cadence, publish the ID to SSM Parameter Store, and have Terraform read the parameter. Add <code>ignore_changes = [ami]</code> if replacement should be deliberate.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Node group specifies three instance types with ON_DEMAND capacity</span><span class="f-loc">modules/eks/variables.tf:56–60</span></div>
+      <p><code>instance_types = ["t3.medium","t3.small","t3.large"]</code> with <code>capacity_type = "ON_DEMAND"</code>. Managed node groups accept a list only for SPOT; on-demand groups take a single type unless a launch template is supplied. Expect this to fail at apply, or at best for the extra entries to be meaningless. Mixing t3.small into a cluster is separately a bad idea — its pod-per-ENI limit is very low.</p>
+      <p class="fix"><b>Fix</b>One instance type per on-demand group, or a launch template. Confirm with a plan and apply against the sandbox.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Elasticsearch claims 30Gi with no CSI driver and no storage class</span><span class="f-loc">logging/elastic.yaml:55–63</span></div>
+      <p>The StatefulSet has a <code>volumeClaimTemplate</code> requesting 30Gi and no <code>storageClassName</code>. Since Kubernetes 1.23 the in-tree EBS provisioner is gone from EKS, and the <code>aws-ebs-csi-driver</code> addon is not installed anywhere in this repo — so the PVC stays <code>Pending</code> and the pod never starts. The init container also uses <code>image: "ubuntu"</code> with no tag.</p>
+      <p class="fix"><b>Fix</b>Replace the stack with Fluent Bit to CloudWatch. If EFK is kept for teaching, install the EBS CSI addon and pin a storage class.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Adding a second cluster operator requires ClickOps</span><span class="f-loc">modules/eks/main.tf · repo-wide</span></div>
+      <p>No <code>access_config</code>, no <code>aws_eks_access_entry</code>, and no OIDC provider anywhere in the repo. The cluster falls back to the <code>aws-auth</code> ConfigMap, where the only administrator is whichever principal ran the first apply. There is also no mechanism for pod-level IAM, which the load balancer controller and any AWS-integrated workload will need.</p>
+      <p class="fix"><b>Fix</b><code>authentication_mode = "API"</code> plus access entries mapping SSO permission-set roles, and the EKS Pod Identity agent addon.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">The AWS provider is unpinned and the lock file is not committed</span><span class="f-loc">provider.tf:11–17</span></div>
+      <p>The <code>version</code> constraint is commented out and no <code>.terraform.lock.hcl</code> is tracked, so every <code>init</code> resolves to whatever is newest. Three constructs in this repo are removed in provider v6: <code>aws_iam_role.managed_policy_arns</code> and the <code>inline_policy</code> block (<code>modules/iam/role/main.tf</code>), and <code>aws_eip.vpc = true</code> (<code>modules/vpc/main.tf:132</code>). The repo is one <code>init</code> away from failing for reasons unrelated to any change made to it.</p>
+      <p class="fix"><b>Fix</b>Pin the provider, commit the lock file, then migrate to <code>aws_iam_role_policy_attachment</code> and <code>domain = "vpc"</code>.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Modules look up IAM roles they should have been handed</span><span class="f-loc">modules/eks/data.tf</span></div>
+      <p><code>data.aws_iam_role</code> resolves cluster and node roles <em>by name</em> — roles that the same Terraform run creates. Data sources carry no implicit dependency on resources, which is precisely why <code>module.eks2</code> needs a hand-written five-entry <code>depends_on</code>. It is a fragile pattern that hides the graph and fails confusingly on a clean apply.</p>
+      <p class="fix"><b>Fix</b>Pass <code>module.eksrole.role_arn</code> and <code>module.noderole.role_arn</code> in directly; most of the <code>depends_on</code> list then becomes unnecessary.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">The deployment stages have no branch gate</span><span class="f-loc">Jenkinsfile:76–108</span></div>
+      <p>Infrastructure is gated to <code>dev</code> and <code>master</code>, but "Deploy logging" and "Deploy application in K8S" are not — so a feature branch build applies manifests to the shared cluster. The application stage also depends on the kubeconfig written by the logging stage, an ordering coupling that breaks the moment either is reordered or skipped.</p>
+      <p class="fix"><b>Fix</b>Apply the same <code>when</code> gate, and set up kubeconfig in whichever stage needs it.</p>
+    </div>
+
+    <div class="f f--high">
+      <div class="f-top"><span class="sev">High</span><span class="f-title">Nothing is parameterised</span><span class="f-loc">locals.tf · main.tf · provider.tf · ami/ami.json · Jenkinsfile</span></div>
+      <p>No root <code>variables.tf</code>, no tfvars, no environment separation. Cluster name, CIDRs, repository name and IAM user names are literals. <code>us-west-2</code> is hardcoded in four places while the sandbox target is <code>us-east-1</code>, and the source AMI is a raw AMI ID which is region-scoped by definition. The original README's guidance is literally to find and replace values across all files — which is the opposite of reusable teaching material.</p>
+      <p class="fix"><b>Fix</b>Root variables with an <code>environments/</code> directory of tfvars; resolve the base AMI from an SSM public parameter rather than an ID.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">The workload manifest has no production properties</span><span class="f-loc">app/deployment.yaml · app/Dockerfile</span></div>
+      <p>One replica, no liveness or readiness probe, no resource requests or limits, no <code>securityContext</code>, no PodDisruptionBudget, no topology spread. The image is <code>node:8.9.4</code> — end of life since December 2019 — installing Express with a bare <code>npm install</code>, with no <code>package.json</code>, no lock file, no <code>.dockerignore</code>, and running as root.</p>
+      <p class="fix"><b>Fix</b>Multi-stage build on a current Node LTS or distroless base, non-root user, committed lock file; two replicas with probes, limits and a PDB.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">ECR has no scanning, no lifecycle policy and mutable tags</span><span class="f-loc">modules/ecr/main.tf</span></div>
+      <p><code>scan_on_push = false</code> explicitly disables scanning; there is no lifecycle policy, so images accumulate and bill forever; and tags are mutable, so <code>latest</code> can be moved underneath a running deployment.</p>
+      <p class="fix"><b>Fix</b>Enable enhanced scanning, set <code>image_tag_mutability = "IMMUTABLE"</code>, and add a lifecycle policy retaining the last 10–20 images.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">Dead and vestigial code</span><span class="f-loc">main.tf:107–160 · modules/vpc/main.tf:47–70 · modules/vpc/data.tf</span></div>
+      <p><code>module.int-bastion</code> is created but referenced by nothing and undocumented, and shares the <code>Name = "bastion"</code> tag with the public one. <code>modules/vpc</code> creates a "default" security group allowing SSH from <code>0.0.0.0/0</code> whose <code>sg_id</code> output is never consumed, and a default NACL that allows everything in both directions, so it enforces nothing. <code>data.aws_vpc.main</code> reads back a VPC the same module just created, when <code>aws_vpc.main.cidr_block</code> is already in scope. A 60-line commented-out <code>null_resource.copy-files</code> block remains in <code>main.tf</code>, along with a committed <code>modules/.DS_Store</code>.</p>
+      <p class="fix"><b>Fix</b>Delete. Dead code in teaching material is actively harmful — a junior engineer cannot tell it is dead.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">Network module is capped at two AZs with undocumented CIDR maths</span><span class="f-loc">modules/vpc/variables.tf:1–3 · modules/vpc/main.tf:11–40</span></div>
+      <p><code>local.count</code> slices the AZ list to the first two, and subnets are derived by <code>cidrsubnet(var.cidr, 5, count.index + 1)</code> for public and <code>+ 12</code> for private. The offsets are magic numbers with no comment explaining the intended layout. Two AZs is also below the three that EKS control plane placement and quorum-sensitive workloads want, and there is a single NAT gateway, making one AZ a single point of failure and adding cross-AZ data charges.</p>
+      <p class="fix"><b>Fix</b>Three AZs by default, an explicit documented subnet plan, and a flag choosing one NAT (dev) or one per AZ (prod).</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">Long-lived IAM users where SSO is already in use</span><span class="f-loc">locals.tf:36–45 · modules/iam/user</span></div>
+      <p>The stack creates a named IAM user with <code>force_destroy = true</code> and grants it SSM session permissions through a group policy. The project already authenticates with Identity Center — the SSO profile is in the project brief — so this is a parallel, weaker identity system creating principals that can hold static access keys.</p>
+      <p class="fix"><b>Fix</b>Grant the SSO permission-set role instead and delete the user and group modules.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">Packer template is in a deprecated format with EOL dependencies</span><span class="f-loc">ami/ami.json · ami/setup.yaml</span></div>
+      <p>Legacy JSON rather than HCL2. It installs <code>python-dev</code>, a Python 2 package absent from Ubuntu 22.04 onward, so the build breaks the moment the base image moves. <code>kubectl</code> is pinned to 1.23.2 and downloaded from the retired <code>storage.googleapis.com/kubernetes-release</code> host rather than <code>dl.k8s.io</code>. AWS credentials are threaded through template variables instead of the default credential chain.</p>
+      <p class="fix"><b>Fix</b>Convert to HCL2, resolve the base AMI from an SSM parameter, drop the credential variables, and track kubectl to the cluster version.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">Shell scripts have no error handling</span><span class="f-loc">bootstrap.sh · routes.sh · app/deploy.sh</span></div>
+      <p>None has a shebang or <code>set -euo pipefail</code>, so every one continues past a failed command and exits zero. <code>bootstrap.sh</code> passes both <code>-P ""</code> and <code>-N ''</code> to <code>ssh-keygen</code> along with a stray heredoc, and both <code>routes.sh</code> and the key-pair import end in <code>|| true</code>, which masks genuine failures alongside the intended idempotency.</p>
+      <p class="fix"><b>Fix</b>Add shebangs and strict mode; replace <code>|| true</code> with a specific check for the already-exists case. Add shellcheck to CI.</p>
+    </div>
+
+    <div class="f">
+      <div class="f-top"><span class="sev">Medium</span><span class="f-title">No infrastructure linting or policy scanning</span><span class="f-loc">Jenkinsfile · repo-wide</span></div>
+      <p>The pipeline never runs <code>terraform validate</code>, tflint, checkov, tfsec or any Terraform test. Sonar is pointed at <code>sonar.sources=app</code> — a ten-line JavaScript file — so the scanning effort is aimed at the least risky part of the repo while the Terraform, which is where the actual exposure lives, is unexamined.</p>
+      <p class="fix"><b>Fix</b>Add <code>validate</code>, tflint and checkov as blocking PR checks, and post the plan as a pull request comment.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ VERSIONS ============ -->
+<section>
+  <div class="sec-head"><h2>Version inventory</h2></div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Component</th><th>Pinned</th><th>Status</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>Kubernetes / EKS</td><td class="mono">1.21</td><td>Past end of extended support</td><td class="mono">locals.tf:4</td></tr>
+        <tr><td>Node group AMI</td><td class="mono">AL2_x86_64</td><td>AL2 is EOL; not published for recent EKS versions</td><td class="mono">modules/eks/variables.tf:47</td></tr>
+        <tr><td>Node.js base image</td><td class="mono">node:8.9.4</td><td>EOL December 2019</td><td class="mono">app/Dockerfile:1</td></tr>
+        <tr><td>Elasticsearch / Kibana</td><td class="mono">7.15.2</td><td>EOL</td><td class="mono">logging/*.yaml</td></tr>
+        <tr><td>Fluentd image</td><td class="mono">v1-debian-elasticsearch</td><td>Floating tag, no pin</td><td class="mono">logging/fluentd.yaml:64</td></tr>
+        <tr><td>kubectl</td><td class="mono">1.23.2</td><td>Far behind; legacy download host</td><td class="mono">ami/setup.yaml:8</td></tr>
+        <tr><td>Ubuntu base</td><td class="mono">20.04 (AMI ID)</td><td>Region-locked literal; standard support ended</td><td class="mono">ami/ami.json:9</td></tr>
+        <tr><td>AWS provider</td><td class="mono">unpinned</td><td>v6 removes three constructs in use here</td><td class="mono">provider.tf:16</td></tr>
+        <tr><td>Terraform</td><td class="mono">&gt;= 1.0</td><td>Open-ended, no lock file committed</td><td class="mono">provider.tf:12</td></tr>
+        <tr><td>Packer template</td><td class="mono">JSON</td><td>Legacy format; HCL2 is current</td><td class="mono">ami/ami.json</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="col">
+    <p style="font-size:.92rem;color:var(--ink-soft)">Confirm target Kubernetes and AMI versions against the current EKS version calendar at apply time rather than fixing a number in documentation — the support window moves roughly every quarter.</p>
+  </div>
+</section>
+
+<!-- ============ MIGRATION ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Migration path</h2>
+    <p style="font-size:.95rem;color:var(--ink-soft);margin:0">Each phase is one feature branch, small enough to review and demonstrate on its own — which is also what makes it usable as teaching material.</p>
+  </div>
+  <div class="col">
+    <div class="phases">
+      <div class="ph"><span class="ph-id">Phase 0</span><span class="ph-branch">feature/foundations</span><div class="ph-body"><span class="ph-t">Make the repo safe to work in</span><span class="ph-d">Extend <code>.gitignore</code>, pin the provider, commit the lock file, add root variables and per-environment backends with locking. Create the <code>main</code> branch. No infrastructure changes — this phase exists so every later phase has a reviewable plan.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 1</span><span class="ph-branch">feature/network</span><div class="ph-body"><span class="ph-t">Single VPC, three AZs, VPC endpoints</span><span class="ph-d">Build the new network beside the old one rather than mutating it, so the before and after can be compared and screenshotted. The Transit Gateway modules move to <code>optional/</code> with their own README.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 2</span><span class="ph-branch">feature/eks</span><div class="ph-body"><span class="ph-t">Modern cluster</span><span class="ph-d">Current Kubernetes version, AL2023 or Bottlerocket nodes, managed addons, <code>authentication_mode = "API"</code> with access entries, Pod Identity, and endpoint access configured deliberately. Role ARNs passed in rather than looked up.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 3</span><span class="ph-branch">feature/ingress</span><div class="ph-body"><span class="ph-t">Load balancer controller</span><span class="ph-d">Install the controller, convert the Service to an Ingress, attach an ACM certificate. This is the phase that retires the bastion from the demo path and turns verification into a browser screenshot.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 4</span><span class="ph-branch">feature/app</span><div class="ph-body"><span class="ph-t">Application and packaging</span><span class="ph-d">Rebuild the Dockerfile, add <code>package.json</code> and a lock file, probes, limits and a non-root context. Replace <code>sed</code> with a Helm chart, tag images by commit SHA, deploy by digest.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 5</span><span class="ph-branch">feature/pipeline</span><div class="ph-body"><span class="ph-t">A pipeline whose gates can fail</span><span class="ph-d">OIDC role assumption in place of static credentials, plan-on-PR with the plan posted as a comment, apply gated by environment approval, and tflint plus checkov plus a corrected Trivy invocation as blocking checks.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 6</span><span class="ph-branch">feature/observability</span><div class="ph-body"><span class="ph-t">Logging and metrics</span><span class="ph-d">Fluent Bit to CloudWatch as the default; Container Insights or Managed Prometheus and Grafana for metrics. The EFK stack stays as an optional module for teaching what the managed service replaces.</span></div></div>
+      <div class="ph"><span class="ph-id">Phase 7</span><span class="ph-branch">feature/docs</span><div class="ph-body"><span class="ph-t">Documentation and teardown</span><span class="ph-d">Rewrite the README against the real design, embed the deployment screenshots, and write the walkthrough. Verify <code>terraform destroy</code> leaves nothing behind — with <code>routes.sh</code> gone it finally can.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section>
+  <div class="sec-head">
+    <h2>Four decisions before Phase 0</h2>
+    <p style="font-size:.95rem;color:var(--ink-soft);margin:0">Each of these changes the shape of the work, and each has a defensible answer in both directions — they turn on what the repo is primarily <em>for</em>.</p>
+  </div>
+  <div class="col" style="display:flex;flex-direction:column;gap:14px">
+    <div class="dec">
+      <span class="dec-q">Hand-rolled modules, or the community VPC and EKS modules?</span>
+      <span class="dec-o">The upstream <code>terraform-aws-modules</code> are battle-tested and would delete most of this repo's surface area. But a module that does everything for you teaches nothing about what it is doing. <span class="rec">Recommended: hybrid</span> — upstream for VPC and EKS so the demo is production-credible, with the hand-rolled versions kept as an annotated teaching chapter showing what the module generates.</span>
+    </div>
+    <div class="dec">
+      <span class="dec-q">Jenkins, or GitHub Actions?</span>
+      <span class="dec-o">Jenkins can be modernized in place, but the OIDC federation that removes static AWS credentials is far simpler on Actions, and the repo already lives on GitHub. <span class="rec">Recommended: GitHub Actions with OIDC</span>, keeping the Jenkinsfile briefly as a comparison artifact if the audience is likely to meet Jenkins in the field.</span>
+    </div>
+    <div class="dec">
+      <span class="dec-q">How private should the endpoint be?</span>
+      <span class="dec-o">Option A is easiest to demonstrate; option C is closest to what an enterprise actually runs and forces you to teach VPC endpoints. <span class="rec">Recommended: option B</span> — private access on, public access restricted to a small allowlist, SSM port-forward for anything outside it.</span>
+    </div>
+    <div class="dec">
+      <span class="dec-q">Managed node groups, or Karpenter?</span>
+      <span class="dec-o">Managed node groups are simpler to explain and one variable away from working. Karpenter is what most teams building new clusters now reach for, and its bin-packing behaviour is genuinely interesting to watch in a demo. <span class="rec">Recommended: managed node groups first</span>, Karpenter as a later phase once the stack is green end to end.</span>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  Review scope — 51 files at commit 2f11cf3 (21 June 2022). Terraform root and 11 modules, Packer template and Ansible playbook, Jenkinsfile, Kubernetes manifests, EFK manifests, shell scripts.<br>
+  Findings verified by reading source. Nothing was applied against AWS; the node group instance-type and provider-version conclusions should be confirmed with a plan and apply in the sandbox account.<br>
+  Pricing figures are order-of-magnitude and want checking against current us-east-1 rates.
+</footer>
+
+</div>

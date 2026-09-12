@@ -1,0 +1,376 @@
+name: app-build-deploy
+
+# Builds the container, scans it, pushes it, and rolls it out by DIGEST.
+#
+# The pipeline this replaces did `docker tag node $REPO_URL` -- no tag at all,
+# so an implicit :latest -- into a mutable repository, then `sed -i` the URL
+# into a tracked manifest. The pod spec never changed between builds, so with
+# imagePullPolicy: IfNotPresent new code never actually rolled out.
+on:
+  push:
+    branches: [dev, main]
+    # Only the application. Editing this workflow cannot change what is
+    # deployed, so it should not trigger a deployment -- that is how a
+    # CI-only merge ended up deploying into a cluster that no longer existed.
+    paths: ['app/**']
+  workflow_dispatch:
+
+concurrency:
+  # Deliberately the SAME group as terraform-apply so the two serialize. See
+  # that file for why. Note this cannot be solved with `workflow_run`: GitHub
+  # only fires that event for workflow files present on the DEFAULT branch, and
+  # this repository's default branch does not carry them.
+  group: deploy-${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  # Region is read from environments/<env>.tfvars at run time so it is
+  # defined in exactly one place. See the "Resolve region" step.
+  TF_ENV_DEFAULT: dev
+
+jobs:
+  # Queueing alone is not enough. The concurrency group prevents the two
+  # workflows overlapping, but says nothing about whether the infrastructure
+  # actually came out healthy -- a terraform-apply can finish, or be cancelled,
+  # and still leave no usable cluster. Assert it, and fail with a sentence that
+  # names the cause instead of a kubectl timeout forty lines into a later job.
+  preflight:
+    name: infrastructure ready
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-preflight-${{ github.run_id }}
+
+      - name: Cluster exists and is ACTIVE
+        run: |
+          set -euo pipefail
+          STATUS="$(aws eks describe-cluster --name "$CLUSTER_NAME" \
+            --query cluster.status --output text 2>/dev/null || echo ABSENT)"
+          if [ "$STATUS" = "ABSENT" ]; then
+            echo "::error::Cluster $CLUSTER_NAME does not exist. Run the terraform-apply workflow first, or 'make up ENV=dev' locally. Nothing was deployed."
+            exit 1
+          fi
+          for i in $(seq 1 40); do
+            [ "$STATUS" = "ACTIVE" ] && break
+            echo "cluster is $STATUS, waiting..."
+            sleep 15
+            STATUS="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.status --output text)"
+          done
+          [ "$STATUS" = "ACTIVE" ] || { echo "::error::Cluster $CLUSTER_NAME is $STATUS, not ACTIVE"; exit 1; }
+          echo "cluster $CLUSTER_NAME is ACTIVE"
+
+      # Skipped unless CI is the thing deploying. A hosted runner cannot reach a
+      # CIDR-restricted API at all, so asserting reachability when the deploy
+      # job is not going to run would fail the workflow over a capability it
+      # was never going to need. See ADR-0009.
+      - name: Kubernetes API is reachable from this runner
+        if: vars.APP_DEPLOY_FROM_CI == 'true'
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null
+
+          # Three different failures all exit non-zero from a kubectl call, and
+          # each has a different fix:
+          #
+          #   no network path    the public endpoint is CIDR-allowlisted, and a
+          #                      hosted runner's egress IP is not on that list
+          #   no authorization   the API answered, but this role has no EKS
+          #                      access entry. IAM permissions are irrelevant
+          #   nothing deployed   API fine, the workload is genuinely missing
+          #
+          # The check below used to collapse all three into "the controller is
+          # not installed", which sends you to `make addons-apply` -- a fix that
+          # cannot possibly resolve the first two, stated confidently.
+          #
+          # `timeout` is not belt-and-braces here. kubectl's own
+          # --request-timeout does NOT bound connection establishment: measured
+          # against an unreachable endpoint it was still hanging past 45s, so a
+          # runner that is off the allowlist would stall this job rather than
+          # reach the diagnostic below. An external timeout is what makes the
+          # failure fast enough to be a diagnostic at all.
+          ERR=""; RC=0
+          ERR="$(timeout 30 kubectl get --raw /version --request-timeout=20s 2>&1 >/dev/null)" || RC=$?
+          if [ "$RC" -ne 0 ]; then
+            # 124 is timeout(1) killing it, usually with nothing on stderr yet.
+            [ "$RC" -eq 124 ] && ERR="no response within 30s${ERR:+ (}${ERR}${ERR:+)}"
+            case "$ERR" in
+              *Unauthorized*|*"provide credentials"*)
+                echo "::error::Reached the Kubernetes API of $CLUSTER_NAME, but this role is not authorized. An AWS account with AdministratorAccess grants ZERO Kubernetes RBAC -- the principal needs an EKS access entry. Add it to cluster_admin_role_arns (terraform.tfvars locally, the TF_VAR_cluster_admin_role_arns secret for CI) and apply the infrastructure root."
+                ;;
+              *)
+                # The allowlist itself is deliberately NOT printed. Workflow logs
+                # on a public repository are public, and "the IP addresses
+                # permitted to reach the API of account <id>" is a targeting aid.
+                # The count is enough to tell you the endpoint is restricted.
+                PUB="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query cluster.resourcesVpcConfig.endpointPublicAccess --output text)"
+                N="$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'length(cluster.resourcesVpcConfig.publicAccessCidrs)' --output text)"
+                echo "::error::Cannot reach the Kubernetes API of $CLUSTER_NAME from this runner (public endpoint enabled: $PUB, allowlisted CIDRs: $N). GitHub-hosted runners get ephemeral egress IPs and are not inside the VPC, so a CIDR-restricted endpoint is unreachable from here BY DESIGN -- this is not a broken cluster. Deploy from a workstation whose IP is on the allowlist (make image ENV=<env> && make deploy ENV=<env>), or move this job to a self-hosted runner in a private subnet. Raw error: ${ERR}"
+                ;;
+            esac
+            exit 1
+          fi
+          echo "API reachable and this role is authorized"
+
+      - name: Load balancer controller is installed
+        if: vars.APP_DEPLOY_FROM_CI == 'true'
+        run: |
+          set -euo pipefail
+          # Reachability and authorization were established by the step above, so
+          # a failure here really does mean the workload is missing.
+          if ! kubectl -n kube-system get deploy aws-load-balancer-controller >/dev/null 2>&1; then
+            echo "::error::The AWS Load Balancer Controller is not installed, so the Ingress in this deploy would never get an ALB. Apply the cluster-addons root first: make addons-apply ENV=dev"
+            exit 1
+          fi
+          kubectl -n kube-system rollout status deploy/aws-load-balancer-controller --timeout=300s
+
+  scan:
+    name: scan source
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: app
+          # `--security-checks vuln,config` in the old Jenkinsfile was renamed
+          # to --scanners years ago, and `config` became `misconfig`, so on any
+          # current Trivy that step errored or silently scanned nothing.
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          # Blocking. The old invocation passed no exit code, so findings were
+          # printed and ignored.
+          exit-code: '1'
+          ignore-unfixed: true
+
+  build:
+    name: build / scan image / push
+    runs-on: ubuntu-latest
+    needs: scan
+    environment: dev
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-app-${{ github.run_id }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          # Nodes are x86_64; the platform is explicit so a build on an arm64
+          # runner cannot silently produce an image the cluster cannot run.
+          platforms: linux/amd64
+          load: true
+          tags: local/hello-world:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: local/hello-world:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Tag and push
+        id: push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          IMAGE="$REGISTRY/${ECR_REPOSITORY}:${SHORT_SHA}"
+          docker tag "local/hello-world:${{ github.sha }}" "$IMAGE"
+          docker push "$IMAGE"
+          DIGEST="$(aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$SHORT_SHA" \
+            --query 'imageDetails[0].imageDigest' --output text)"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed $IMAGE @ $DIGEST"
+
+      - name: How to deploy this image
+        if: vars.APP_DEPLOY_FROM_CI != 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Image published, not deployed"
+            echo ""
+            echo '`APP_DEPLOY_FROM_CI` is not set, so this run stopped after pushing.'
+            echo "A GitHub-hosted runner has no network path to a CIDR-restricted"
+            echo "Kubernetes API, so the deploy runs where that path exists — see ADR-0009."
+            echo ""
+            echo '```'
+            echo "make image  ENV=${TF_ENV}    # records this digest locally"
+            echo "make deploy ENV=${TF_ENV}"
+            echo '```'
+            echo ""
+            echo "Digest: \`${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Off unless the repository opts in, because on a GitHub-hosted runner this
+  # job CANNOT work against a CIDR-restricted endpoint -- see ADR-0009. Set the
+  # repository variable APP_DEPLOY_FROM_CI=true once the runner has a network
+  # path to the API (a self-hosted runner in a private subnet, or an allowlist
+  # entry that covers it).
+  deploy:
+    name: deploy
+    if: vars.APP_DEPLOY_FROM_CI == 'true'
+    runs-on: ubuntu-latest
+    needs: build
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth: everything account- and environment-specific is
+      # read from environments/<env>.tfvars, so no value is duplicated into
+      # this file where it would silently drift.
+      - name: Resolve configuration
+        run: |
+          set -euo pipefail
+          ENV="${TF_ENV:-${TF_ENV_DEFAULT}}"
+          F="environments/${ENV}.tfvars"
+          test -f "$F" || { echo "missing $F"; exit 1; }
+          val() { awk -F'"' -v k="$1" '$0 ~ "^[[:space:]]*"k"[[:space:]]*=" {print $2; exit}' "$F"; }
+          REGION="$(val region)"
+          PROJECT="$(val project)"; PROJECT="${PROJECT:-tech-challenge}"
+          ECR="$(val ecr_repository_name)"; ECR="${ECR:-hello-world}"
+          {
+            echo "AWS_REGION=$REGION"
+            echo "TF_ENV=$ENV"
+            echo "PROJECT=$PROJECT"
+            echo "ECR_REPOSITORY=$ECR"
+            echo "CLUSTER_NAME=${PROJECT}-${ENV}-cluster"
+            echo "TF_VAR_github_repository=${GITHUB_REPOSITORY}"
+          } >> "$GITHUB_ENV"
+          echo "env=$ENV region=$REGION cluster=${PROJECT}-${ENV}-cluster"
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-${{ github.run_id }}
+
+      - name: kubeconfig
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Set image by digest
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com"
+          cd app/k8s
+          # kustomize edit writes the reference; nothing sed-edits a tracked
+          # file in place, and the change is scoped to this checkout.
+          #
+          # The key is the FULL placeholder, not "hello-world". Kustomize
+          # matches an images: entry against the whole name component of the
+          # reference, so "hello-world" does not match
+          # "SET-BY-MAKE-DEPLOY/hello-world" -- and a non-match is silent. This
+          # job never caught it because it has only ever run after an earlier
+          # job failed, so the deploy was always skipped.
+          kustomize edit set image "SET-BY-MAKE-DEPLOY/hello-world=${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}"
+
+          # Check the RENDER, not the exit code. Both ways of setting an image
+          # exit 0 after matching nothing; the output is the only thing here
+          # that cannot lie about whether the substitution happened.
+          if kubectl kustomize . | grep -q 'SET-BY-MAKE-DEPLOY'; then
+            echo "::error::The image placeholder survived rendering, so this deploy would apply an unpullable reference and fail several minutes later as a rollout timeout. Expected ${REGISTRY}/${ECR_REPOSITORY}@${DIGEST}."
+            exit 1
+          fi
+          kubectl kustomize . | grep -A1 'image:' | head -10
+
+      - name: Apply
+        run: |
+          set -euo pipefail
+          kubectl apply -k app/k8s
+          kubectl -n demo rollout status deploy/hello-world --timeout=5m
+
+      - name: Verify the running digest is the one just built
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          RUNNING="$(kubectl -n demo get pods -o jsonpath='{.items[0].spec.containers[0].image}')"
+          echo "running: $RUNNING"
+          case "$RUNNING" in
+            *"$DIGEST") echo "OK — running the digest built by this run" ;;
+            *) echo "MISMATCH — expected $DIGEST"; exit 1 ;;
+          esac

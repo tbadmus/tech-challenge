@@ -1,0 +1,16 @@
+{
+  "name": "hello-world",
+  "version": "1.0.0",
+  "description": "Demo workload for the tech-challenge EKS stack",
+  "main": "hello.js",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node hello.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
