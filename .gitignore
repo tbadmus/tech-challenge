@@ -12,6 +12,10 @@ crash.*.log
 # and IS tracked -- it contains no secrets, only shape.
 terraform.tfvars
 terraform.tfvars.json
+# The example IS tracked -- it is how anyone knows what the ignored file needs.
+# Explicit, so that widening the rule above to terraform.tfvars* later does not
+# silently take the documentation with it.
+!terraform.tfvars.example
 *.auto.tfvars
 *.auto.tfvars.json
 override.tf

@@ -68,6 +68,15 @@ preflight: ## Check credentials, tools, and derived values
 	@echo "  region     $(REGION)"
 	@echo "  bucket     $(BUCKET)"
 	@echo "  repository $(GH_REPO)"
+	@test -f terraform.tfvars || { \
+	  echo ""; \
+	  echo "  no terraform.tfvars -- copy the example and fill it in:"; \
+	  echo "      cp terraform.tfvars.example terraform.tfvars"; \
+	  echo ""; \
+	  echo "  Not fatal: the stack deploys without it. But an AWS account with"; \
+	  echo "  AdministratorAccess grants ZERO Kubernetes RBAC, so nothing you own"; \
+	  echo "  will be able to reach the cluster it builds."; \
+	}
 
 backend: preflight ## Ensure the state bucket exists, then generate backend config
 	@# head-bucket distinguishes three outcomes, and conflating them is a trap:
