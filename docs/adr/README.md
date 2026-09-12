@@ -18,3 +18,4 @@ record that supersedes it rather than editing history.
 | [0006](0006-s3-native-state-locking.md) | S3 conditional-write locking instead of a DynamoDB table | Accepted |
 | [0007](0007-dns-and-tls.md) | ExternalDNS + ACM for public DNS and TLS, gated on a resolvable domain | Accepted |
 | [0008](0008-generated-kms-alias.md) | Own the cluster encryption key so its alias can carry a generated suffix | Accepted |
+| [0009](0009-ci-cannot-reach-the-cluster.md) | CI builds and publishes; deployment runs where a path to the API exists | Accepted |

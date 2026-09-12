@@ -124,6 +124,12 @@ the allowlist; GitHub-hosted runners are not in the VPC and get ephemeral egress
 IPs, so they cannot reach a CIDR-restricted endpoint at all. Run those from your
 workstation — or, if your IP is not allowlisted, through `make tunnel ENV=dev`.
 
+That boundary is deliberate, not a gap: `app-deploy.yml` builds, scans and
+pushes the image on every merge, then stops and tells you the digest. Deployment
+is gated behind the `APP_DEPLOY_FROM_CI` repository variable, off by default.
+[ADR-0009](docs/adr/0009-ci-cannot-reach-the-cluster.md) records why, and what
+it would take to change — pull-based GitOps being the answer worth revisiting.
+
 **No file edits are required to deploy into a different AWS account.** Everything
 account-specific is derived rather than configured:
 
@@ -158,7 +164,7 @@ lists every target. Full procedures are in the
 | [Architecture review](docs/architecture-review.html) | The original code review and target design |
 | [Architecture diagram](docs/architecture.drawio) | Editable draw.io source |
 | [Walkthrough](docs/walkthrough.md) | Teaching narrative — what broke and what it taught |
-| [ADRs](docs/adr/) | Seven decision records, with the options rejected |
+| [ADRs](docs/adr/) | Nine decision records, with the options rejected |
 | [Observability](docs/observability.md) | Log groups, working queries, the nested-JSON trap |
 
 ## Repository layout
