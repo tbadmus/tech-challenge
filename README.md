@@ -85,7 +85,7 @@ steps 1–3 are yours either way.
 |---|---|---|
 | 1 | `aws sso login --profile <p>` + `export AWS_PROFILE=<p>` | Everything downstream derives the account id from this session |
 | 2 | `make preflight ENV=dev` | Prints the account, region, bucket and repo it derived. Changes nothing |
-| 3 | *edit `terraform.tfvars`* | **Grant yourself the cluster** — see below. Do this **before** the apply |
+| 3 | `cp terraform.tfvars.example terraform.tfvars`, then edit | **Grant yourself the cluster** — see below. Do this **before** the apply |
 | 4 | `make bootstrap ENV=dev` | Once per account: state bucket, OIDC provider, CI roles |
 | 5 | `make init` → `make plan` → `make apply ENV=dev` | VPC, EKS, nodes, addons, IAM, ECR, SSM host. ~15 min |
 | 6 | `make wait-cluster` + `make wait-nodes ENV=dev` | Gates. Neither is true just because the apply returned zero |
@@ -98,6 +98,9 @@ grants **zero** Kubernetes RBAC, so without an EKS access entry `kubectl` return
 *"the server has asked for the client to provide credentials"*, the console shows
 *Unauthorized*, and steps 7 and 9 both fail — while every AWS-level check reports
 a perfectly healthy cluster, because it is one.
+
+[`terraform.tfvars.example`](terraform.tfvars.example) is tracked and carries the full set
+with dummy values and the reasoning for each. The short version:
 
 ```hcl
 # terraform.tfvars — gitignored; never commit either value
