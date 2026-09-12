@@ -72,7 +72,12 @@ jobs:
           [ "$STATUS" = "ACTIVE" ] || { echo "::error::Cluster $CLUSTER_NAME is $STATUS, not ACTIVE"; exit 1; }
           echo "cluster $CLUSTER_NAME is ACTIVE"
 
+      # Skipped unless CI is the thing deploying. A hosted runner cannot reach a
+      # CIDR-restricted API at all, so asserting reachability when the deploy
+      # job is not going to run would fail the workflow over a capability it
+      # was never going to need. See ADR-0009.
       - name: Kubernetes API is reachable from this runner
+        if: vars.APP_DEPLOY_FROM_CI == 'true'
         run: |
           set -euo pipefail
           aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION" >/dev/null
@@ -120,6 +125,7 @@ jobs:
           echo "API reachable and this role is authorized"
 
       - name: Load balancer controller is installed
+        if: vars.APP_DEPLOY_FROM_CI == 'true'
         run: |
           set -euo pipefail
           # Reachability and authorization were established by the step above, so
@@ -257,8 +263,34 @@ jobs:
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           echo "Pushed $IMAGE @ $DIGEST"
 
+      - name: How to deploy this image
+        if: vars.APP_DEPLOY_FROM_CI != 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### Image published, not deployed"
+            echo ""
+            echo '`APP_DEPLOY_FROM_CI` is not set, so this run stopped after pushing.'
+            echo "A GitHub-hosted runner has no network path to a CIDR-restricted"
+            echo "Kubernetes API, so the deploy runs where that path exists — see ADR-0009."
+            echo ""
+            echo '```'
+            echo "make image  ENV=${TF_ENV}    # records this digest locally"
+            echo "make deploy ENV=${TF_ENV}"
+            echo '```'
+            echo ""
+            echo "Digest: \`${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Off unless the repository opts in, because on a GitHub-hosted runner this
+  # job CANNOT work against a CIDR-restricted endpoint -- see ADR-0009. Set the
+  # repository variable APP_DEPLOY_FROM_CI=true once the runner has a network
+  # path to the API (a self-hosted runner in a private subnet, or an allowlist
+  # entry that covers it).
   deploy:
     name: deploy
+    if: vars.APP_DEPLOY_FROM_CI == 'true'
     runs-on: ubuntu-latest
     needs: build
     environment: dev
